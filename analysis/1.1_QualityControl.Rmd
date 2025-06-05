@@ -22,21 +22,3582 @@ library(sctransform)
 #library(enrichR)
 #library(scDblFinder)
 
-#Output paths
-current_file <- "1.1_QualityControl"
- 
-output_dir_data <- here::here( "output", current_file)
-if (!dir.exists(output_dir_data)) dir.create(output_dir_data, recursive = TRUE)
- 
-if (!dir.exists(here::here("docs", "figure"))) dir.create(here::here("docs", "figure"))
- 
-output_dir_figs <- here::here("docs", "figure", paste0(current_file, ".Rmd"))
-if (!dir.exists(output_dir_figs)) dir.create(output_dir_figs, recursive = TRUE)
+
+H002P030<- Read10X_h5("G:/Pietro/Precise_merged/H002P030/filtered_feature_bc_matrix.h5")
+H004P026<- Read10X_h5("G:/Pietro/Precise_merged/H004P026/filtered_feature_bc_matrix.h5")
+H008P019<- Read10X_h5("G:/Pietro/Precise_merged/H008P019/filtered_feature_bc_matrix.h5")
+H043P034<- Read10X_h5("G:/Pietro/Precise_merged/H043P034/filtered_feature_bc_matrix.h5")
+H047P001<- Read10X_h5("G:/Pietro/Precise_merged/H047P001/filtered_feature_bc_matrix.h5")
+H050H048<- Read10X_h5("G:/Pietro/Precise_merged/H050H048/filtered_feature_bc_matrix.h5")
+P002P023<- Read10X_h5("G:/Pietro/Precise_merged/P002P023/filtered_feature_bc_matrix.h5")
+P007P016<- Read10X_h5("G:/Pietro/Precise_merged/P007P016/filtered_feature_bc_matrix.h5")
+P008H054<- Read10X_h5("G:/Pietro/Precise_merged/P008H054/filtered_feature_bc_matrix.h5")
+P015P027<- Read10X_h5("G:/Pietro/Precise_merged/P015P027/filtered_feature_bc_matrix.h5")
+P017H044<- Read10X_h5("G:/Pietro/Precise_merged/P017H044/filtered_feature_bc_matrix.h5")
+P018P014<- Read10X_h5("G:/Pietro/Precise_merged/P018P014/filtered_feature_bc_matrix.h5")
+P020P010<- Read10X_h5("G:/Pietro/Precise_merged/P020P010/filtered_feature_bc_matrix.h5")
+P021P028<- Read10X_h5("G:/Pietro/Precise_merged/P021P028/filtered_feature_bc_matrix.h5")
+P024H059<- Read10X_h5("G:/Pietro/Precise_merged/P024H059/filtered_feature_bc_matrix.h5")
+P025P037<- Read10X_h5("G:/Pietro/Precise_merged/P025P037/filtered_feature_bc_matrix.h5")
+P029P006<- Read10X_h5("G:/Pietro/Precise_merged/P029P006/filtered_feature_bc_matrix.h5")
+P032P035<- Read10X_h5("G:/Pietro/Precise_merged/P032P035/filtered_feature_bc_matrix.h5")
+P025P037<- Read10X_h5("G:/Pietro/Precise_merged/P025P037/filtered_feature_bc_matrix.h5")
+P040P041<- Read10X_h5("G:/Pietro/Precise_merged/P040P041/filtered_feature_bc_matrix.h5")
+```
+```{r}
+# Load in the UMI matrix
+pbmcH002P030.umis <- H002P030$`Gene Expression`
+  
+# Load in the HTO count matrix
+pbmcH002P030.htos <- H002P030$`Antibody Capture`
+
+# Load in the Protein count matrix
+pbmcH002P030.adt <- H002P030$`Antibody Capture`
+
+# Select cell barcodes detected by both RNA and HTO In the example datasets we have already
+# filtered the cells for you, but perform this step for clarity.
+jointH002P030.bcs <- intersect(colnames(pbmcH002P030.umis), colnames(pbmcH002P030.htos))
+
+# Subset RNA and HTO counts by joint cell barcodes
+pbmcH002P030.umis <- pbmcH002P030.umis[, jointH002P030.bcs]
+pbmcH002P030.htos <- as.matrix(pbmcH002P030.htos[, jointH002P030.bcs])
+
+# Confirm that the HTO have the correct names
+rownames(pbmcH002P030.htos)
+
+# As we only want the b2M hashtags to label the sample well shorten it.
+
+short_htosH002P030 <- pbmcH002P030.htos[28:29,]
+rownames(short_htosH002P030) <- c("H002", "P030")
+rownames(short_htosH002P030)
+```
+
+```{r}
+#### Setup Seurat object and and normalise hashtag data
+# Setup Seurat object
+pbmcH002P030.hashtag <- CreateSeuratObject(counts = pbmcH002P030.umis)
+# Normalize RNA data with log normalization
+pbmcH002P030.hashtag <- NormalizeData(pbmcH002P030.hashtag)
+
+pbmcH002P030.hashtag <- FindVariableFeatures(pbmcH002P030.hashtag, selection.method = "vst", nfeatures = 2000)
+```
+
+#### Normalize HTO and Adding HTO data as an independent assay 
+
+```{r error=TRUE}
+# Add HTO data as a new assay independent from RNA
+pbmcH002P030.hashtag[["HTO"]] <- CreateAssayObject(counts = short_htosH002P030)
+short_adtH002P030 <- pbmcH002P030.htos[1:27,]
+rownames(short_adtH002P030)
+pbmcH002P030.hashtag[["ADT"]] <- CreateAssayObject(counts = short_adtH002P030)
+# Normalize HTO data, here we use centered log-ratio (CLR) transformation
+pbmcH002P030.hashtag <- NormalizeData(pbmcH002P030.hashtag, assay = "HTO", normalization.method = "CLR")
+#No addition of ADT
+#pbmc.hashtag <- NormalizeData(pbmc.hashtag, assay = "ADT", normalization.method = "CLR")
+```
+
+#### Demultiplex cells based on HTO enrichment
+
+```{r}
+pbmcH002P030.hashtag <- HTODemux(pbmcH002P030.hashtag, assay = "HTO", positive.quantile = 0.7, kfunc = "kmeans")
+#### Visualize demultiplexing results
+# Global classification results
+table(pbmcH002P030.hashtag$HTO_classification.global)
+```
+
+```{r error=TRUE}
+#### Visualize enrichment for selected HTOs with ridge plots
+# Group cells based on the max HTO signal
+Idents(pbmcH002P030.hashtag) <- "HTO_maxID"
+RidgePlot(pbmcH002P030.hashtag, assay = "HTO", features = rownames(pbmcH002P030.hashtag[["HTO"]])[1:2], ncol = 2)
+
+```
+
+```{r error=TRUE}
+
+Idents(pbmcH002P030.hashtag) <- "hash.ID"
+FeatureScatter(object = pbmcH002P030.hashtag, feature1 = "H002", feature2 = "P030")
+
+```
+
+```{r}
+DefaultAssay(pbmcH002P030.hashtag) <- "HTO"
+pbmcH002P030.singlet <- subset(pbmcH002P030.hashtag, subset = P030 > 1 & H002 < 3)
+Idents(pbmcH002P030.singlet) <- "hash.ID"
+FeatureScatter(pbmcH002P030.singlet, feature1 = "H002", feature2 = "P030")
+```
+
+```{r}
+DefaultAssay(pbmcH002P030.hashtag) <- "HTO"
+pbmc.singlet_P030 <- subset(pbmcH002P030.hashtag, subset = P030 > 1 & H002 < 0.3)
+pbmc.singlet_P030$hash.ID <- "P030"
+Idents(pbmc.singlet_P030) <- "hash.ID"
+plots<- FeatureScatter(pbmc.singlet_P030, feature1 = "H002", feature2 = "P030")
+patchwork::wrap_plots(plots) * xlim(c(0, 4)) + ylim(c(0, 4))
+DefaultAssay(pbmc.singlet_P030) <- "RNA"
+```
+
+```{r}
+DefaultAssay(pbmcH002P030.hashtag) <- "HTO"
+pbmc.singlet_H002 <- subset(pbmcH002P030.hashtag, subset = P030 < 0.2 & H002 > 0.5)
+pbmc.singlet_H002$hash.ID <- "H002"
+Idents(pbmc.singlet_H002) <- "hash.ID"
+plots<- FeatureScatter(pbmc.singlet_H002, feature1 = "H002", feature2 = "P030")
+patchwork::wrap_plots(plots) * xlim(c(0, 4)) + ylim(c(0, 4))
+DefaultAssay(pbmc.singlet_H002) <- "RNA"
+
+```
+
+```{r}
+# Global classification results
+#table(pbmc.singlet_H004$HTO_classification.global)
+```
 
 
-mono <- readRDS(here::here("data", "mono.integrated_final.rds"))
 
-plot <- DimPlot(mono, group.by = "integrated_snn_res.0.2") 
-ggsave(here::here(output_dir_figs, "plot.png"), plot, dpi = 600, width = 10, height = 10)
+```{r}
+pbmc.singlet_H002[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_H002, pattern = "^MT-")
+VlnPlot(pbmc.singlet_H002, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+plot1 <- FeatureScatter(pbmc.singlet_H002, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot2 <- FeatureScatter(pbmc.singlet_H002, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot1 + plot2
+```
+```{r}
+pbmc.singlet_H002 <- subset(pbmc.singlet_H002, subset = nFeature_RNA > 750 & nFeature_RNA < 5000 & percent.mt < 15)
+VlnPlot(pbmc.singlet_H002, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+
+```
+```{r}
+#SCdblfinder
+set.seed(123)
+Idents (pbmc.singlet_H002)
+sce_H002 <- scDblFinder(GetAssayData(pbmc.singlet_H002, slot= "counts"))
+View(pbmc.singlet_H002@meta.data)
+#see metadata after doublet identification
+pbmc.singlet_H002$scDblFinder.class <- sce_H002$scDblFinder.class
+View(pbmc.singlet_H002@meta.data)
+#table(pbmc.singlet_H002@meta.data$scDblFinder.class)
+
+Idents(pbmc.singlet_H002) <-pbmc.singlet_H002@meta.data$scDblFinder.class
+Idents(pbmc.singlet_H002)
+
+VlnPlot(pbmc.singlet_H002, features= c("nFeature_RNA", "nCount_RNA"), ncol=2)
+pbmc.singlet_H002 <- subset(pbmc.singlet_H002, idents = "singlet")
+
+saveRDS(pbmc.singlet_H002, "H002P030/pbmc.singlet_H002.rds")
+```
+
+######Patient030###################
+
+```{r}
+#QC and filtering
+pbmc.singlet_P030[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_P030, pattern = "^MT-")
+VlnPlot(pbmc.singlet_P030, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+plot3 <- FeatureScatter(pbmc.singlet_P030, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot4 <- FeatureScatter(pbmc.singlet_P030, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot3 + plot4
+```
+
+```{r}
+pbmc.singlet_P030 <- subset(pbmc.singlet_P030, subset = nFeature_RNA > 1000 & nFeature_RNA < 5000 & percent.mt < 20)
+VlnPlot(pbmc.singlet_P030, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+```
+
+```{r}
+#Scdblfinder
+Idents (pbmc.singlet_P030)
+sce_P030 <- scDblFinder(GetAssayData(pbmc.singlet_P030, slot= "counts"))
+View(pbmc.singlet_P030@meta.data)
+#see metadata after doublet identification
+pbmc.singlet_P030$scDblFinder.class <- sce_P030$scDblFinder.class
+View(pbmc.singlet_P030@meta.data)
+table(pbmc.singlet_P030@meta.data$scDblFinder.class)
+#visualize the doublets
+Idents(pbmc.singlet_P030) <-pbmc.singlet_P030@meta.data$scDblFinder.class
+Idents(pbmc.singlet_P030)
+VlnPlot(pbmc.singlet_P030, features= c("nFeature_RNA", "nCount_RNA"), ncol=2)
+pbmc.singlet_P030 <- subset(pbmc.singlet_P030, idents = "singlet")
+
+saveRDS(pbmc.singlet_P030, "H002P030/pbmc.singlet_P030.rds")
+```
+
+```{r}
+#H004P026
+# Load in the UMI matrix
+pbmcH004P026.umis <- H004P026$`Gene Expression`
+  
+# Load in the HTO count matrix
+pbmcH004P026.htos <- H004P026$`Antibody Capture`
+
+# Load in the Protein count matrix
+pbmcH004P026.adt <- H004P026$`Antibody Capture`
+
+# Select cell barcodes detected by both RNA and HTO In the example datasets we have already
+# filtered the cells for you, but perform this step for clarity.
+jointH004P026.bcs <- intersect(colnames(pbmcH004P026.umis), colnames(pbmcH004P026.htos))
+
+# Subset RNA and HTO counts by joint cell barcodes
+pbmcH004P026.umis <- pbmcH004P026.umis[, jointH004P026.bcs]
+pbmcH004P026.htos <- as.matrix(pbmcH004P026.htos[, jointH004P026.bcs])
+
+# Confirm that the HTO have the correct names
+rownames(pbmcH004P026.htos)
+
+# As we only want the b2M hashtags to label the sample well shorten it.
+
+short_htosH004P026 <- pbmcH004P026.htos[28:29,]
+rownames(short_htosH004P026) <- c("H004", "P026")
+rownames(short_htosH004P026)
+
+```
+
+
+#### Setup Seurat object and and normalise RNA data
+
+
+```{r error=TRUE}
+# Setup Seurat object
+pbmcH004P026.hashtag <- CreateSeuratObject(counts = pbmcH004P026.umis)
+# Normalize RNA data with log normalization
+pbmcH004P026.hashtag <- NormalizeData(pbmcH004P026.hashtag)
+
+pbmcH004P026.hashtag <- FindVariableFeatures(pbmcH004P026.hashtag, selection.method = "vst", nfeatures = 2000)
+
+```
+#### Normalize HTO and Adding HTO data as an independent assay 
+
+```{r error=TRUE}
+# Add HTO data as a new assay independent from RNA
+pbmcH004P026.hashtag[["HTO"]] <- CreateAssayObject(counts = short_htosH004P026)
+short_adtH004P026 <- pbmcH004P026.htos[1:27,]
+rownames(short_adtH004P026)
+pbmcH004P026.hashtag[["ADT"]] <- CreateAssayObject(counts = short_adtH004P026)
+# Normalize HTO data, here we use centered log-ratio (CLR) transformation
+pbmcH004P026.hashtag <- NormalizeData(pbmcH004P026.hashtag, assay = "HTO", normalization.method = "CLR")
+#No addition of ADT
+#pbmc.hashtag <- NormalizeData(pbmc.hashtag, assay = "ADT", normalization.method = "CLR")
+```
+
+#### Demultiplex cells based on HTO enrichment
+
+```{r error=TRUE}
+pbmcH004P026.hashtag <- HTODemux(pbmcH004P026.hashtag, assay = "HTO", positive.quantile = 0.7, kfunc = "kmeans")
+#### Visualize demultiplexing results
+# Global classification results
+table(pbmcH004P026.hashtag$HTO_classification.global)
+```
+
+```{r error=TRUE}
+#### Visualize enrichment for selected HTOs with ridge plots
+# Group cells based on the max HTO signal
+Idents(pbmcH004P026.hashtag) <- "HTO_maxID"
+RidgePlot(pbmcH004P026.hashtag, assay = "HTO", features = rownames(pbmcH004P026.hashtag[["HTO"]])[1:2], ncol = 2)
+
+```
+
+```{r error=TRUE}
+
+Idents(pbmcH004P026.hashtag) <- "hash.ID"
+FeatureScatter(object = pbmcH004P026.hashtag, feature1 = "H004", feature2 = "P026")
+
+```
+
+```{r}
+DefaultAssay(pbmcH004P026.hashtag) <- "HTO"
+pbmcH004P026.singlet <- subset(pbmcH004P026.hashtag, subset = P026 > 1 & H004 < 3)
+Idents(pbmcH004P026.singlet) <- "hash.ID"
+FeatureScatter(pbmcH004P026.singlet, feature1 = "H004", feature2 = "P026")
+```
+
+```{r}
+DefaultAssay(pbmcH004P026.hashtag) <- "HTO"
+pbmc.singlet_P026 <- subset(pbmcH004P026.hashtag, subset = P026 > 1 & H004 < 0.3)
+pbmc.singlet_P026$hash.ID <- "P026"
+Idents(pbmc.singlet_P026) <- "hash.ID"
+plots<- FeatureScatter(pbmc.singlet_P026, feature1 = "H004", feature2 = "P026")
+patchwork::wrap_plots(plots) * xlim(c(0, 4)) + ylim(c(0, 4))
+DefaultAssay(pbmc.singlet_P026) <- "RNA"
+
+```
+
+```{r}
+DefaultAssay(pbmcH004P026.hashtag) <- "HTO"
+pbmc.singlet_H004 <- subset(pbmcH004P026.hashtag, subset = P026 < 0.7 & H004 > 0.5)
+pbmc.singlet_H004$hash.ID <- "H004"
+Idents(pbmc.singlet_H004) <- "hash.ID"
+plots<- FeatureScatter(pbmc.singlet_H004, feature1 = "H004", feature2 = "P026")
+patchwork::wrap_plots(plots) * xlim(c(0, 4)) + ylim(c(0, 4))
+DefaultAssay(pbmc.singlet_H004) <- "RNA"
+
+
+```
+
+```{r}
+# Global classification results
+table(pbmc.singlet_H004$HTO_classification.global)
+```
+
+
+
+```{r}
+pbmc.singlet_H004[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_H004, pattern = "^MT-")
+VlnPlot(pbmc.singlet_H004, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+plot5 <- FeatureScatter(pbmc.singlet_H004, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot6 <- FeatureScatter(pbmc.singlet_H004, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot5 + plot6
+```
+```{r}
+pbmc.singlet_H004 <- subset(pbmc.singlet_H004, subset = nFeature_RNA > 500 & nFeature_RNA < 5000 & percent.mt < 15)
+VlnPlot(pbmc.singlet_H004, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+
+```
+```{r}
+#SCdblfinder
+set.seed(123)
+Idents (pbmc.singlet_H004)
+sce_H004 <- scDblFinder(GetAssayData(pbmc.singlet_H004, slot= "counts"))
+View(pbmc.singlet_H004@meta.data)
+#see metadata after doublet identification
+pbmc.singlet_H004$scDblFinder.class <- sce_H004$scDblFinder.class
+View(pbmc.singlet_H004@meta.data)
+#table(pbmc.singlet_H004@meta.data$scDblFinder.class)
+
+Idents(pbmc.singlet_H004) <-pbmc.singlet_H004@meta.data$scDblFinder.class
+Idents(pbmc.singlet_H004)
+
+VlnPlot(pbmc.singlet_H004, features= c("nFeature_RNA", "nCount_RNA"), ncol=2)
+pbmc.singlet_H004 <- subset(pbmc.singlet_H004, idents = "singlet")
+
+saveRDS(pbmc.singlet_H004, "H004P026/pbmc.singlet_H004.rds")
+```
+
+```{r}
+###Patient026###################
+
+#QC and filtering
+pbmc.singlet_P026[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_P026, pattern = "^MT-")
+VlnPlot(pbmc.singlet_P026, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+plot7 <- FeatureScatter(pbmc.singlet_P026, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot8 <- FeatureScatter(pbmc.singlet_P026, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot7 + plot8
+#set QC
+pbmc.singlet_P026 <- subset(pbmc.singlet_P026, subset = nFeature_RNA > 800 & nFeature_RNA < 4000 & percent.mt < 20)
+VlnPlot(pbmc.singlet_P026, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+```
+
+```{r}
+Idents (pbmc.singlet_P026)
+sce_P026 <- scDblFinder(GetAssayData(pbmc.singlet_P026, slot= "counts"))
+View(pbmc.singlet_P026@meta.data)
+#see metadata after doublet identification
+pbmc.singlet_P026$scDblFinder.class <- sce_P026$scDblFinder.class
+View(pbmc.singlet_P026@meta.data)
+table(pbmc.singlet_P026@meta.data$scDblFinder.class)
+#visualize the doublets
+Idents(pbmc.singlet_P026) <-pbmc.singlet_P026@meta.data$scDblFinder.class
+Idents(pbmc.singlet_P026)
+VlnPlot(pbmc.singlet_P026, features= c("nFeature_RNA", "nCount_RNA"), ncol=2)
+pbmc.singlet_P026 <- subset(pbmc.singlet_P026, idents = "singlet")
+
+saveRDS(pbmc.singlet_P026, "H004P026/pbmc.singlet_P026.rds")
+```
+
+```{r}
+#H008P019
+
+# Load in the UMI matrix
+pbmcH008P019.umis <- H008P019$`Gene Expression`
+  
+# Load in the HTO count matrix
+pbmcH008P019.htos <- H008P019$`Antibody Capture`
+
+# Load in the Protein count matrix
+pbmcH008P019.adt <- H008P019$`Antibody Capture`
+
+# Select cell barcodes detected by both RNA and HTO In the example datasets we have already
+# filtered the cells for you, but perform this step for clarity.
+jointH008P019.bcs <- intersect(colnames(pbmcH008P019.umis), colnames(pbmcH008P019.htos))
+
+# Subset RNA and HTO counts by joint cell barcodes
+pbmcH008P019.umis <- pbmcH008P019.umis[, jointH008P019.bcs]
+pbmcH008P019.htos <- as.matrix(pbmcH008P019.htos[, jointH008P019.bcs])
+
+# Confirm that the HTO have the correct names
+rownames(pbmcH008P019.htos)
+
+# As we only want the b2M hashtags to label the sample well shorten it.
+
+short_htosH008P019 <- pbmcH008P019.htos[28:29,]
+rownames(short_htosH008P019) <- c("H008", "P019")
+rownames(short_htosH008P019)
+```
+
+```{r}
+#### Setup Seurat object and and normalise hashtag data
+# Setup Seurat object
+pbmcH008P019.hashtag <- CreateSeuratObject(counts = pbmcH008P019.umis)
+# Normalize RNA data with log normalization
+pbmcH008P019.hashtag <- NormalizeData(pbmcH008P019.hashtag)
+
+pbmcH008P019.hashtag <- FindVariableFeatures(pbmcH008P019.hashtag, selection.method = "vst", nfeatures = 2000)
+```
+
+#### Normalize HTO and Adding HTO data as an independent assay 
+
+```{r error=TRUE}
+# Add HTO data as a new assay independent from RNA
+pbmcH008P019.hashtag[["HTO"]] <- CreateAssayObject(counts = short_htosH008P019)
+short_adtH008P019 <- pbmcH008P019.htos[1:27,]
+rownames(short_adtH008P019)
+pbmcH008P019.hashtag[["ADT"]] <- CreateAssayObject(counts = short_adtH008P019)
+# Normalize HTO data, here we use centered log-ratio (CLR) transformation
+pbmcH008P019.hashtag <- NormalizeData(pbmcH008P019.hashtag, assay = "HTO", normalization.method = "CLR")
+#No addition of ADT
+#pbmc.hashtag <- NormalizeData(pbmc.hashtag, assay = "ADT", normalization.method = "CLR")
+```
+
+#### Demultiplex cells based on HTO enrichment
+
+```{r}
+pbmcH008P019.hashtag <- HTODemux(pbmcH008P019.hashtag, assay = "HTO", positive.quantile = 0.7, kfunc = "kmeans")
+#### Visualize demultiplexing results
+# Global classification results
+table(pbmcH008P019.hashtag$HTO_classification.global)
+```
+
+```{r error=TRUE}
+#### Visualize enrichment for selected HTOs with ridge plots
+# Group cells based on the max HTO signal
+Idents(pbmcH008P019.hashtag) <- "HTO_maxID"
+RidgePlot(pbmcH008P019.hashtag, assay = "HTO", features = rownames(pbmcH008P019.hashtag[["HTO"]])[1:2], ncol = 2)
+
+```
+
+```{r error=TRUE}
+
+Idents(pbmcH008P019.hashtag) <- "hash.ID"
+FeatureScatter(pbmcH008P019.hashtag, feature1 = "H008", feature2 = "P019")
+
+
+```
+
+```{r}
+DefaultAssay(pbmcH008P019.hashtag) <- "HTO"
+pbmcH008P019.singlet <- subset(pbmcH008P019.hashtag, subset = P019 > 0.5 & H008 < 4)
+Idents(pbmcH008P019.singlet) <- "hash.ID"
+FeatureScatter(pbmcH008P019.singlet, feature1 = "H008", feature2 = "P019")
+```
+
+```{r}
+DefaultAssay(pbmcH008P019.hashtag) <- "HTO"
+pbmc.singlet_P019 <- subset(pbmcH008P019.hashtag, subset = P019 > 0.5 & H008 < 0.3)
+pbmc.singlet_P019$hash.ID <- "P019"
+Idents(pbmc.singlet_P019) <- "hash.ID"
+plotsP019<- FeatureScatter(pbmc.singlet_P019, feature1 = "H008", feature2 = "P019")
+patchwork::wrap_plots(plotsP019) * xlim(c(0, 4)) + ylim(c(0, 4))
+DefaultAssay(pbmc.singlet_P019) <- "RNA"
+```
+
+```{r}
+DefaultAssay(pbmcH008P019.hashtag) <- "HTO"
+pbmc.singlet_H008 <- subset(pbmcH008P019.hashtag, subset = P019 < 0.5 & H008 > 0.5)
+pbmc.singlet_H008$hash.ID <- "H008"
+Idents(pbmc.singlet_H008) <- "hash.ID"
+plotsH008<- FeatureScatter(pbmc.singlet_H008, feature1 = "H008", feature2 = "P019")
+patchwork::wrap_plots(plots) * xlim(c(0, 4)) + ylim(c(0, 4))
+DefaultAssay(pbmc.singlet_H008) <- "RNA"
+
+```
+
+```{r}
+# Global classification results
+table(pbmc.singlet_H008$HTO_classification.global)
+```
+
+
+
+```{r}
+pbmc.singlet_H008[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_H008, pattern = "^MT-")
+VlnPlot(pbmc.singlet_H008, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+plot9 <- FeatureScatter(pbmc.singlet_H008, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot10 <- FeatureScatter(pbmc.singlet_H008, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot9 + plot10
+```
+```{r}
+pbmc.singlet_H008 <- subset(pbmc.singlet_H008, subset = nFeature_RNA > 500 & nFeature_RNA < 5000 & percent.mt < 17.5)
+VlnPlot(pbmc.singlet_H008, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+
+```
+```{r}
+#SCdblfinder
+set.seed(123)
+Idents (pbmc.singlet_H008)
+sce_H008 <- scDblFinder(GetAssayData(pbmc.singlet_H008, slot= "counts"))
+View(pbmc.singlet_H008@meta.data)
+#see metadata after doublet identification
+pbmc.singlet_H008$scDblFinder.class <- sce_H008$scDblFinder.class
+View(pbmc.singlet_H008@meta.data)
+#table(pbmc.singlet_H008@meta.data$scDblFinder.class)
+
+Idents(pbmc.singlet_H008) <-pbmc.singlet_H008@meta.data$scDblFinder.class
+Idents(pbmc.singlet_H008)
+
+VlnPlot(pbmc.singlet_H008, features= c("nFeature_RNA", "nCount_RNA"), ncol=2)
+pbmc.singlet_H008 <- subset(pbmc.singlet_H008, idents = "singlet")
+View(pbmc.singlet_H008@meta.data)
+saveRDS(pbmc.singlet_H008, "H008P019/pbmc.singlet_H008.rds")
+```
+
+######Patient019###################
+
+```{r}
+#QC and filtering
+pbmc.singlet_P019[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_P019, pattern = "^MT-")
+VlnPlot(pbmc.singlet_P019, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+plot11 <- FeatureScatter(pbmc.singlet_P019, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot12 <- FeatureScatter(pbmc.singlet_P019, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot11 + plot12
+```
+
+```{r}
+pbmc.singlet_P019 <- subset(pbmc.singlet_P019, subset = nFeature_RNA > 500 & nFeature_RNA < 5000 & percent.mt < 15)
+VlnPlot(pbmc.singlet_P019, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+```
+
+```{r}
+#Scdblfinder
+Idents (pbmc.singlet_P019)
+sce_P019 <- scDblFinder(GetAssayData(pbmc.singlet_P019, slot= "counts"))
+
+#see metadata after doublet identification
+pbmc.singlet_P019$scDblFinder.class <- sce_P019$scDblFinder.class
+View(pbmc.singlet_P019@meta.data)
+table(pbmc.singlet_P019@meta.data$scDblFinder.class)
+#visualize the doublets
+Idents(pbmc.singlet_P019) <-pbmc.singlet_P019@meta.data$scDblFinder.class
+Idents(pbmc.singlet_P019)
+VlnPlot(pbmc.singlet_P019, features= c("nFeature_RNA", "nCount_RNA"), ncol=2)
+pbmc.singlet_P019 <- subset(pbmc.singlet_P019, idents = "singlet")
+View(pbmc.singlet_P019@meta.data)
+saveRDS(pbmc.singlet_P019, "H008P019/pbmc.singlet_P019.rds")
+```
+
+```{r}
+#H043P034
+
+# Load in the UMI matrix
+pbmcH043P034.umis <- H043P034$`Gene Expression`
+  
+# Load in the HTO count matrix
+pbmcH043P034.htos <- H043P034$`Antibody Capture`
+
+# Load in the Protein count matrix
+pbmcH043P034.adt <- H043P034$`Antibody Capture`
+
+# Select cell barcodes detected by both RNA and HTO In the example datasets we have already
+# filtered the cells for you, but perform this step for clarity.
+jointH043P034.bcs <- intersect(colnames(pbmcH043P034.umis), colnames(pbmcH043P034.htos))
+
+# Subset RNA and HTO counts by joint cell barcodes
+pbmcH043P034.umis <- pbmcH043P034.umis[, jointH043P034.bcs]
+pbmcH043P034.htos <- as.matrix(pbmcH043P034.htos[, jointH043P034.bcs])
+
+# Confirm that the HTO have the correct names
+rownames(pbmcH043P034.htos)
+
+# As we only want the b2M hashtags to label the sample well shorten it.
+
+short_htosH043P034 <- pbmcH043P034.htos[28:29,]
+rownames(short_htosH043P034) <- c("H043", "P034")
+rownames(short_htosH043P034)
+```
+
+```{r}
+#### Setup Seurat object and and normalise hashtag data
+# Setup Seurat object
+pbmcH043P034.hashtag <- CreateSeuratObject(counts = pbmcH043P034.umis)
+# Normalize RNA data with log normalization
+pbmcH043P034.hashtag <- NormalizeData(pbmcH043P034.hashtag)
+
+pbmcH043P034.hashtag <- FindVariableFeatures(pbmcH043P034.hashtag, selection.method = "vst", nfeatures = 2000)
+```
+
+#### Normalize HTO and Adding HTO data as an independent assay 
+
+```{r error=TRUE}
+# Add HTO data as a new assay independent from RNA
+pbmcH043P034.hashtag[["HTO"]] <- CreateAssayObject(counts = short_htosH043P034)
+short_adtH043P034 <- pbmcH043P034.htos[1:27,]
+rownames(short_adtH043P034)
+pbmcH043P034.hashtag[["ADT"]] <- CreateAssayObject(counts = short_adtH043P034)
+# Normalize HTO data, here we use centered log-ratio (CLR) transformation
+pbmcH043P034.hashtag <- NormalizeData(pbmcH043P034.hashtag, assay = "HTO", normalization.method = "CLR")
+#No addition of ADT
+#pbmc.hashtag <- NormalizeData(pbmc.hashtag, assay = "ADT", normalization.method = "CLR")
+```
+
+#### Demultiplex cells based on HTO enrichment
+
+```{r}
+pbmcH043P034.hashtag <- HTODemux(pbmcH043P034.hashtag, assay = "HTO", positive.quantile = 0.7, kfunc = "kmeans")
+#### Visualize demultiplexing results
+# Global classification results
+table(pbmcH043P034.hashtag$HTO_classification.global)
+```
+
+```{r error=TRUE}
+#### Visualize enrichment for selected HTOs with ridge plots
+# Group cells based on the max HTO signal
+Idents(pbmcH043P034.hashtag) <- "HTO_maxID"
+RidgePlot(pbmcH043P034.hashtag, assay = "HTO", features = rownames(pbmcH043P034.hashtag[["HTO"]])[1:2], ncol = 2)
+
+```
+
+```{r error=TRUE}
+
+Idents(pbmcH043P034.hashtag) <- "hash.ID"
+FeatureScatter(pbmcH043P034.hashtag, feature1 = "H043", feature2 = "P034")
+
+
+```
+
+```{r}
+DefaultAssay(pbmcH043P034.hashtag) <- "HTO"
+pbmcH043P034.singlet <- subset(pbmcH043P034.hashtag, subset = P034 > 0.6 & H043 < 4)
+Idents(pbmcH043P034.singlet) <- "hash.ID"
+FeatureScatter(pbmcH043P034.singlet, feature1 = "H043", feature2 = "P034")
+```
+
+```{r}
+DefaultAssay(pbmcH043P034.hashtag) <- "HTO"
+pbmc.singlet_P034 <- subset(pbmcH043P034.hashtag, subset = P034 > 0.6 & H043 < 0.4)
+pbmc.singlet_P034$hash.ID <- "P034"
+Idents(pbmc.singlet_P034) <- "hash.ID"
+plotsP034<- FeatureScatter(pbmc.singlet_P034, feature1 = "H043", feature2 = "P034")
+patchwork::wrap_plots(plotsP034) * xlim(c(0, 4)) + ylim(c(0, 4))
+DefaultAssay(pbmc.singlet_P034) <- "RNA"
+```
+
+```{r}
+DefaultAssay(pbmcH043P034.hashtag) <- "HTO"
+pbmc.singlet_H043 <- subset(pbmcH043P034.hashtag, subset = P034 < 0.5 & H043 > 0.5)
+pbmc.singlet_H043$hash.ID <- "H043"
+Idents(pbmc.singlet_H043) <- "hash.ID"
+plotsH043<- FeatureScatter(pbmc.singlet_H043, feature1 = "H043", feature2 = "P034")
+patchwork::wrap_plots(plotsH043) * xlim(c(0, 4)) + ylim(c(0, 4))
+DefaultAssay(pbmc.singlet_H043) <- "RNA"
+```
+
+```{r}
+# Global classification results
+table(pbmc.singlet_H043$HTO_classification.global)
+```
+
+
+
+```{r}
+pbmc.singlet_H043[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_H043, pattern = "^MT-")
+VlnPlot(pbmc.singlet_H043, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+plot13 <- FeatureScatter(pbmc.singlet_H043, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot14 <- FeatureScatter(pbmc.singlet_H043, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot13 + plot14
+```
+```{r}
+pbmc.singlet_H043 <- subset(pbmc.singlet_H043, subset = nFeature_RNA > 500 & nFeature_RNA < 5000 & percent.mt < 20)
+VlnPlot(pbmc.singlet_H043, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+```
+
+```{r}
+#SCdblfinder
+set.seed(123)
+Idents (pbmc.singlet_H043)
+sce_H043 <- scDblFinder(GetAssayData(pbmc.singlet_H043, slot= "counts"))
+View(pbmc.singlet_H043@meta.data)
+#see metadata after doublet identification
+pbmc.singlet_H043$scDblFinder.class <- sce_H043$scDblFinder.class
+View(pbmc.singlet_H043@meta.data)
+#table(pbmc.singlet_H043@meta.data$scDblFinder.class)
+
+Idents(pbmc.singlet_H043) <-pbmc.singlet_H043@meta.data$scDblFinder.class
+Idents(pbmc.singlet_H043)
+
+VlnPlot(pbmc.singlet_H043, features= c("nFeature_RNA", "nCount_RNA"), ncol=2)
+pbmc.singlet_H043 <- subset(pbmc.singlet_H043, idents = "singlet")
+View(pbmc.singlet_H043@meta.data)
+saveRDS(pbmc.singlet_H043, "H043P034/pbmc.singlet_H043.rds")
+```
+
+######Patient034###################
+
+```{r}
+#QC and filtering
+pbmc.singlet_P034[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_P034, pattern = "^MT-")
+VlnPlot(pbmc.singlet_P034, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+plot15 <- FeatureScatter(pbmc.singlet_P034, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot16 <- FeatureScatter(pbmc.singlet_P034, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot15 + plot16
+```
+
+```{r}
+pbmc.singlet_P034 <- subset(pbmc.singlet_P034, subset = nFeature_RNA > 500 & nFeature_RNA < 5000 & percent.mt < 15)
+VlnPlot(pbmc.singlet_P034, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+```
+
+```{r}
+#Scdblfinder
+Idents (pbmc.singlet_P034)
+sce_P034 <- scDblFinder(GetAssayData(pbmc.singlet_P034, slot= "counts"))
+
+#see metadata after doublet identification
+pbmc.singlet_P034$scDblFinder.class <- sce_P034$scDblFinder.class
+View(pbmc.singlet_P034@meta.data)
+table(pbmc.singlet_P034@meta.data$scDblFinder.class)
+#visualize the doublets
+Idents(pbmc.singlet_P034) <-pbmc.singlet_P034@meta.data$scDblFinder.class
+Idents(pbmc.singlet_P034)
+VlnPlot(pbmc.singlet_P034, features= c("nFeature_RNA", "nCount_RNA"), ncol=2)
+pbmc.singlet_P034 <- subset(pbmc.singlet_P034, idents = "singlet")
+View(pbmc.singlet_P034@meta.data)
+saveRDS(pbmc.singlet_P034, "H043P034/pbmc.singlet_P034")
+```
+```{r}
+###################H047P001
+
+# Load in the UMI matrix
+pbmcH047P001.umis <- H047P001$`Gene Expression`
+  
+# Load in the HTO count matrix
+pbmcH047P001.htos <- H047P001$`Antibody Capture`
+
+# Load in the Protein count matrix
+pbmcH047P001.adt <- H047P001$`Antibody Capture`
+
+# Select cell barcodes detected by both RNA and HTO In the example datasets we have already
+# filtered the cells for you, but perform this step for clarity.
+jointH047P001.bcs <- intersect(colnames(pbmcH047P001.umis), colnames(pbmcH047P001.htos))
+
+# Subset RNA and HTO counts by joint cell barcodes
+pbmcH047P001.umis <- pbmcH047P001.umis[, jointH047P001.bcs]
+pbmcH047P001.htos <- as.matrix(pbmcH047P001.htos[, jointH047P001.bcs])
+
+# Confirm that the HTO have the correct names
+rownames(pbmcH047P001.htos)
+
+# As we only want the b2M hashtags to label the sample well shorten it.
+
+short_htosH047P001 <- pbmcH047P001.htos[28:29,]
+rownames(short_htosH047P001) <- c("H047", "P001")
+rownames(short_htosH047P001)
+```
+
+```{r}
+#### Setup Seurat object and and normalise hashtag data
+# Setup Seurat object
+pbmcH047P001.hashtag <- CreateSeuratObject(counts = pbmcH047P001.umis)
+# Normalize RNA data with log normalization
+pbmcH047P001.hashtag <- NormalizeData(pbmcH047P001.hashtag)
+
+pbmcH047P001.hashtag <- FindVariableFeatures(pbmcH047P001.hashtag, selection.method = "vst", nfeatures = 2000)
+```
+
+#### Normalize HTO and Adding HTO data as an independent assay 
+
+```{r error=TRUE}
+# Add HTO data as a new assay independent from RNA
+pbmcH047P001.hashtag[["HTO"]] <- CreateAssayObject(counts = short_htosH047P001)
+short_adtH047P001 <- pbmcH047P001.htos[1:27,]
+rownames(short_adtH047P001)
+pbmcH047P001.hashtag[["ADT"]] <- CreateAssayObject(counts = short_adtH047P001)
+# Normalize HTO data, here we use centered log-ratio (CLR) transformation
+pbmcH047P001.hashtag <- NormalizeData(pbmcH047P001.hashtag, assay = "HTO", normalization.method = "CLR")
+#No addition of ADT
+#pbmc.hashtag <- NormalizeData(pbmc.hashtag, assay = "ADT", normalization.method = "CLR")
+```
+
+#### Demultiplex cells based on HTO enrichment
+
+```{r}
+pbmcH047P001.hashtag <- HTODemux(pbmcH047P001.hashtag, assay = "HTO", positive.quantile = 0.7, kfunc = "kmeans")
+#### Visualize demultiplexing results
+# Global classification results
+table(pbmcH047P001.hashtag$HTO_classification.global)
+```
+
+```{r error=TRUE}
+#### Visualize enrichment for selected HTOs with ridge plots
+# Group cells based on the max HTO signal
+Idents(pbmcH047P001.hashtag) <- "HTO_maxID"
+RidgePlot(pbmcH047P001.hashtag, assay = "HTO", features = rownames(pbmcH047P001.hashtag[["HTO"]])[1:2], ncol = 2)
+
+```
+
+```{r error=TRUE}
+
+Idents(pbmcH047P001.hashtag) <- "hash.ID"
+FeatureScatter(pbmcH047P001.hashtag, feature1 = "H047", feature2 = "P001")
+
+
+```
+
+```{r}
+DefaultAssay(pbmcH047P001.hashtag) <- "HTO"
+pbmcH047P001.singlet <- subset(pbmcH047P001.hashtag, subset = P001 > 0.8 & H047 < 4)
+Idents(pbmcH047P001.singlet) <- "hash.ID"
+FeatureScatter(pbmcH047P001.singlet, feature1 = "H047", feature2 = "P001")
+```
+
+```{r}
+DefaultAssay(pbmcH047P001.hashtag) <- "HTO"
+pbmc.singlet_P001 <- subset(pbmcH047P001.hashtag, subset = P001 > 0.6 & H047 < 0.5)
+pbmc.singlet_P001$hash.ID <- "P001"
+Idents(pbmc.singlet_P001) <- "hash.ID"
+plotsP001<- FeatureScatter(pbmc.singlet_P001, feature1 = "H047", feature2 = "P001")
+patchwork::wrap_plots(plotsP001) * xlim(c(0, 4)) + ylim(c(0, 4))
+DefaultAssay(pbmc.singlet_P001) <- "RNA"
+```
+
+```{r}
+DefaultAssay(pbmcH047P001.hashtag) <- "HTO"
+pbmc.singlet_H047 <- subset(pbmcH047P001.hashtag, subset = P001 < 0.7 & H047 > 0.6)
+pbmc.singlet_H047$hash.ID <- "H047"
+Idents(pbmc.singlet_H047) <- "hash.ID"
+plotsH047<- FeatureScatter(pbmc.singlet_H047, feature1 = "H047", feature2 = "P001")
+patchwork::wrap_plots(plotsH047) * xlim(c(0, 4)) + ylim(c(0, 4))
+DefaultAssay(pbmc.singlet_H047) <- "RNA"
+```
+
+```{r}
+# Global classification results
+table(pbmc.singlet_H047$HTO_classification.global)
+```
+
+
+
+```{r}
+pbmc.singlet_H047[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_H047, pattern = "^MT-")
+pbmc.singlet_H047[["percent.ribo"]] <- PercentageFeatureSet(pbmc.singlet_H047, 
+                                    pattern = "^RP[SL]")
+VlnPlot(pbmc.singlet_H047, features = c("nFeature_RNA", "nCount_RNA", "percent.mt", "percent.ribo"), ncol = 4)
+plot17 <- FeatureScatter(pbmc.singlet_H047, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot18 <- FeatureScatter(pbmc.singlet_H047, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot17 + plot18
+```
+```{r}
+pbmc.singlet_H047 <- subset(pbmc.singlet_H047, subset = nFeature_RNA > 500 & nFeature_RNA < 5000 & percent.mt < 17.5)
+VlnPlot(pbmc.singlet_H047, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+```
+
+```{r}
+#SCdblfinder
+set.seed(123)
+Idents (pbmc.singlet_H047)
+sce_H047 <- scDblFinder(GetAssayData(pbmc.singlet_H047, slot= "counts"))
+View(pbmc.singlet_H047@meta.data)
+#see metadata after doublet identification
+pbmc.singlet_H047$scDblFinder.class <- sce_H047$scDblFinder.class
+View(pbmc.singlet_H047@meta.data)
+#table(pbmc.singlet_H047@meta.data$scDblFinder.class)
+
+Idents(pbmc.singlet_H047) <-pbmc.singlet_H047@meta.data$scDblFinder.class
+Idents(pbmc.singlet_H047)
+
+VlnPlot(pbmc.singlet_H047, features= c("nFeature_RNA", "nCount_RNA"), ncol=2)
+pbmc.singlet_H047 <- subset(pbmc.singlet_H047, idents = "singlet")
+View(pbmc.singlet_H047@meta.data)
+saveRDS(pbmc.singlet_H047, "H047P001/pbmc.singlet_H047.rds")
+```
+
+######Patient001###################
+
+```{r}
+#QC and filtering
+pbmc.singlet_P001[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_P001, pattern = "^MT-")
+pbmc.singlet_P001[["percent.ribo"]] <- PercentageFeatureSet(pbmc.singlet_P001, 
+                                    pattern = "^RP[SL]")
+View(pbmc.singlet_P001@meta.data)
+VlnPlot(pbmc.singlet_P001, features = c("nFeature_RNA", "nCount_RNA", "percent.mt","percent.ribo"), ncol = 4)
+plot19 <- FeatureScatter(pbmc.singlet_P001, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot20 <- FeatureScatter(pbmc.singlet_P001, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot19 + plot20
+```
+
+```{r}
+pbmc.singlet_P001 <- subset(pbmc.singlet_P001, subset = nFeature_RNA > 500 & nFeature_RNA < 5000 & percent.mt < 15)
+VlnPlot(pbmc.singlet_P001, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+```
+
+```{r}
+#Scdblfinder
+Idents (pbmc.singlet_P001)
+sce_P001 <- scDblFinder(GetAssayData(pbmc.singlet_P001, slot= "counts"))
+
+#see metadata after doublet identification
+pbmc.singlet_P001$scDblFinder.class <- sce_P001$scDblFinder.class
+View(pbmc.singlet_P001@meta.data)
+table(pbmc.singlet_P001@meta.data$scDblFinder.class)
+#visualize the doublets
+Idents(pbmc.singlet_P001) <-pbmc.singlet_P001@meta.data$scDblFinder.class
+Idents(pbmc.singlet_P001)
+VlnPlot(pbmc.singlet_P001, features= c("nFeature_RNA", "nCount_RNA"), ncol=2)
+pbmc.singlet_P001 <- subset(pbmc.singlet_P001, idents = "singlet")
+View(pbmc.singlet_P001@meta.data)
+saveRDS(pbmc.singlet_P001, "H047P001/pbmc.singlet_P001")
+```
+
+```{r}
+#H050H048
+
+# Load in the UMI matrix
+pbmcH050H048.umis <- H050H048$`Gene Expression`
+  
+# Load in the HTO count matrix
+pbmcH050H048.htos <- H050H048$`Antibody Capture`
+
+# Load in the Protein count matrix
+pbmcH050H048.adt <- H050H048$`Antibody Capture`
+
+# Select cell barcodes detected by both RNA and HTO In the example datasets we have already
+# filtered the cells for you, but perform this step for clarity.
+jointH050H048.bcs <- intersect(colnames(pbmcH050H048.umis), colnames(pbmcH050H048.htos))
+
+# Subset RNA and HTO counts by joint cell barcodes
+pbmcH050H048.umis <- pbmcH050H048.umis[, jointH050H048.bcs]
+pbmcH050H048.htos <- as.matrix(pbmcH050H048.htos[, jointH050H048.bcs])
+
+# Confirm that the HTO have the correct names
+rownames(pbmcH050H048.htos)
+
+# As we only want the b2M hashtags to label the sample well shorten it.
+
+short_htosH050H048 <- pbmcH050H048.htos[28:29,]
+rownames(short_htosH050H048) <- c("H050", "H048")
+rownames(short_htosH050H048)
+```
+
+```{r}
+#### Setup Seurat object and and normalise hashtag data
+# Setup Seurat object
+pbmcH050H048.hashtag <- CreateSeuratObject(counts = pbmcH050H048.umis)
+# Normalize RNA data with log normalization
+pbmcH050H048.hashtag <- NormalizeData(pbmcH050H048.hashtag)
+
+pbmcH050H048.hashtag <- FindVariableFeatures(pbmcH050H048.hashtag, selection.method = "vst", nfeatures = 2000)
+```
+
+#### Normalize HTO and Adding HTO data as an independent assay 
+
+```{r error=TRUE}
+# Add HTO data as a new assay independent from RNA
+pbmcH050H048.hashtag[["HTO"]] <- CreateAssayObject(counts = short_htosH050H048)
+short_adtH050H048 <- pbmcH050H048.htos[1:27,]
+rownames(short_adtH050H048)
+pbmcH050H048.hashtag[["ADT"]] <- CreateAssayObject(counts = short_adtH050H048)
+# Normalize HTO data, here we use centered log-ratio (CLR) transformation
+pbmcH050H048.hashtag <- NormalizeData(pbmcH050H048.hashtag, assay = "HTO", normalization.method = "CLR")
+#No addition of ADT
+#pbmc.hashtag <- NormalizeData(pbmc.hashtag, assay = "ADT", normalization.method = "CLR")
+```
+
+#### Demultiplex cells based on HTO enrichment
+
+```{r}
+pbmcH050H048.hashtag <- HTODemux(pbmcH050H048.hashtag, assay = "HTO", positive.quantile = 0.7, kfunc = "kmeans")
+#### Visualize demultiplexing results
+# Global classification results
+table(pbmcH050H048.hashtag$HTO_classification.global)
+```
+
+```{r error=TRUE}
+#### Visualize enrichment for selected HTOs with ridge plots
+# Group cells based on the max HTO signal
+Idents(pbmcH050H048.hashtag) <- "HTO_maxID"
+RidgePlot(pbmcH050H048.hashtag, assay = "HTO", features = rownames(pbmcH050H048.hashtag[["HTO"]])[1:2], ncol = 2)
+
+```
+
+```{r error=TRUE}
+
+Idents(pbmcH050H048.hashtag) <- "hash.ID"
+FeatureScatter(pbmcH050H048.hashtag, feature1 = "H050", feature2 = "H048")
+
+
+```
+
+```{r}
+DefaultAssay(pbmcH050H048.hashtag) <- "HTO"
+pbmcH050H048.singlet <- subset(pbmcH050H048.hashtag, subset = H048 > 0.5 & H050 < 4)
+Idents(pbmcH050H048.singlet) <- "hash.ID"
+FeatureScatter(pbmcH050H048.singlet, feature1 = "H050", feature2 = "H048")
+```
+
+```{r}
+DefaultAssay(pbmcH050H048.hashtag) <- "HTO"
+pbmc.singlet_H048 <- subset(pbmcH050H048.hashtag, subset = H048 > 0.5 & H050 < 0.4)
+pbmc.singlet_H048$hash.ID <- "H048"
+Idents(pbmc.singlet_H048) <- "hash.ID"
+plotsH048<- FeatureScatter(pbmc.singlet_H048, feature1 = "H050", feature2 = "H048")
+patchwork::wrap_plots(plotsH048) * xlim(c(0, 4)) + ylim(c(0, 4))
+DefaultAssay(pbmc.singlet_H048) <- "RNA"
+```
+
+```{r}
+DefaultAssay(pbmcH050H048.hashtag) <- "HTO"
+pbmc.singlet_H050 <- subset(pbmcH050H048.hashtag, subset = H048 < 0.5 & H050 > 0.5)
+pbmc.singlet_H050$hash.ID <- "H050"
+Idents(pbmc.singlet_H050) <- "hash.ID"
+plotsH050<- FeatureScatter(pbmc.singlet_H050, feature1 = "H050", feature2 = "H048")
+patchwork::wrap_plots(plotsH050) * xlim(c(0, 4)) + ylim(c(0, 4))
+DefaultAssay(pbmc.singlet_H050) <- "RNA"
+```
+
+```{r}
+# Global classification results
+table(pbmc.singlet_H050$HTO_classification.global)
+```
+
+
+
+```{r}
+pbmc.singlet_H050[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_H050, pattern = "^MT-")
+VlnPlot(pbmc.singlet_H050, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+plot21 <- FeatureScatter(pbmc.singlet_H050, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot22 <- FeatureScatter(pbmc.singlet_H050, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot21 + plot22
+```
+```{r}
+pbmc.singlet_H050 <- subset(pbmc.singlet_H050, subset = nFeature_RNA > 500 & nFeature_RNA < 5000 & percent.mt < 15)
+VlnPlot(pbmc.singlet_H050, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+```
+
+```{r}
+#SCdblfinder
+set.seed(123)
+Idents (pbmc.singlet_H050)
+sce_H050 <- scDblFinder(GetAssayData(pbmc.singlet_H050, slot= "counts"))
+View(pbmc.singlet_H050@meta.data)
+#see metadata after doublet identification
+pbmc.singlet_H050$scDblFinder.class <- sce_H050$scDblFinder.class
+View(pbmc.singlet_H050@meta.data)
+#table(pbmc.singlet_H050@meta.data$scDblFinder.class)
+
+Idents(pbmc.singlet_H050) <-pbmc.singlet_H050@meta.data$scDblFinder.class
+Idents(pbmc.singlet_H050)
+
+VlnPlot(pbmc.singlet_H050, features= c("nFeature_RNA", "nCount_RNA"), ncol=2)
+pbmc.singlet_H050 <- subset(pbmc.singlet_H050, idents = "singlet")
+View(pbmc.singlet_H050@meta.data)
+saveRDS(pbmc.singlet_H050, "H050H048/pbmc.singlet_H050.rds")
+```
+
+######Healthy048###################
+
+```{r}
+#QC and filtering
+pbmc.singlet_H048[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_H048, pattern = "^MT-")
+VlnPlot(pbmc.singlet_H048, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+plot23 <- FeatureScatter(pbmc.singlet_H048, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot24 <- FeatureScatter(pbmc.singlet_H048, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot23 + plot24
+```
+
+```{r}
+pbmc.singlet_H048 <- subset(pbmc.singlet_H048, subset = nFeature_RNA > 200 & nFeature_RNA < 5000 & percent.mt < 15)
+VlnPlot(pbmc.singlet_H048, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+```
+
+```{r}
+#Scdblfinder
+Idents (pbmc.singlet_H048)
+sce_H048 <- scDblFinder(GetAssayData(pbmc.singlet_H048, slot= "counts"))
+
+#see metadata after doublet identification
+pbmc.singlet_H048$scDblFinder.class <- sce_H048$scDblFinder.class
+View(pbmc.singlet_H048@meta.data)
+table(pbmc.singlet_H048@meta.data$scDblFinder.class)
+#visualize the doublets
+Idents(pbmc.singlet_H048) <-pbmc.singlet_H048@meta.data$scDblFinder.class
+Idents(pbmc.singlet_H048)
+VlnPlot(pbmc.singlet_H048, features= c("nFeature_RNA", "nCount_RNA"), ncol=2)
+pbmc.singlet_H048 <- subset(pbmc.singlet_H048, idents = "singlet")
+View(pbmc.singlet_H048@meta.data)
+saveRDS(pbmc.singlet_H048, "H050H048/pbmc.singlet_H048")
+```
+
+```{r}
+#P002P023
+
+# Load in the UMI matrix
+pbmcP002P023.umis <- P002P023$`Gene Expression`
+  
+# Load in the HTO count matrix
+pbmcP002P023.htos <- P002P023$`Antibody Capture`
+
+# Load in the Protein count matrix
+pbmcP002P023.adt <- P002P023$`Antibody Capture`
+
+# Select cell barcodes detected by both RNA and HTO In the example datasets we have already
+# filtered the cells for you, but perform this step for clarity.
+jointP002P023.bcs <- intersect(colnames(pbmcP002P023.umis), colnames(pbmcP002P023.htos))
+
+# Subset RNA and HTO counts by joint cell barcodes
+pbmcP002P023.umis <- pbmcP002P023.umis[, jointP002P023.bcs]
+pbmcP002P023.htos <- as.matrix(pbmcP002P023.htos[, jointP002P023.bcs])
+
+# Confirm that the HTO have the correct names
+rownames(pbmcP002P023.htos)
+
+# As we only want the b2M hashtags to label the sample well shorten it.
+
+short_htosP002P023 <- pbmcP002P023.htos[28:29,]
+rownames(short_htosP002P023) <- c("P002", "P023")
+rownames(short_htosP002P023)
+```
+
+```{r}
+#### Setup Seurat object and and normalise hashtag data
+# Setup Seurat object
+pbmcP002P023.hashtag <- CreateSeuratObject(counts = pbmcP002P023.umis)
+# Normalize RNA data with log normalization
+pbmcP002P023.hashtag <- NormalizeData(pbmcP002P023.hashtag)
+
+pbmcP002P023.hashtag <- FindVariableFeatures(pbmcP002P023.hashtag, selection.method = "vst", nfeatures = 2000)
+```
+
+#### Normalize HTO and Adding HTO data as an independent assay 
+
+```{r error=TRUE}
+# Add HTO data as a new assay independent from RNA
+pbmcP002P023.hashtag[["HTO"]] <- CreateAssayObject(counts = short_htosP002P023)
+short_adtP002P023 <- pbmcP002P023.htos[1:27,]
+rownames(short_adtP002P023)
+pbmcP002P023.hashtag[["ADT"]] <- CreateAssayObject(counts = short_adtP002P023)
+# Normalize HTO data, here we use centered log-ratio (CLR) transformation
+pbmcP002P023.hashtag <- NormalizeData(pbmcP002P023.hashtag, assay = "HTO", normalization.method = "CLR")
+#No addition of ADT
+#pbmc.hashtag <- NormalizeData(pbmc.hashtag, assay = "ADT", normalization.method = "CLR")
+```
+
+#### Demultiplex cells based on HTO enrichment
+
+```{r}
+pbmcP002P023.hashtag <- HTODemux(pbmcP002P023.hashtag, assay = "HTO", positive.quantile = 0.7, kfunc = "kmeans")
+#### Visualize demultiplexing results
+# Global classification results
+table(pbmcP002P023.hashtag$HTO_classification.global)
+```
+
+```{r error=TRUE}
+#### Visualize enrichment for selected HTOs with ridge plots
+# Group cells based on the max HTO signal
+Idents(pbmcP002P023.hashtag) <- "HTO_maxID"
+RidgePlot(pbmcP002P023.hashtag, assay = "HTO", features = rownames(pbmcP002P023.hashtag[["HTO"]])[1:2], ncol = 2)
+
+```
+
+```{r error=TRUE}
+
+Idents(pbmcP002P023.hashtag) <- "hash.ID"
+FeatureScatter(pbmcP002P023.hashtag, feature1 = "P002", feature2 = "P023")
+
+
+```
+
+```{r}
+DefaultAssay(pbmcP002P023.hashtag) <- "HTO"
+pbmcP002P023.singlet <- subset(pbmcP002P023.hashtag, subset = P023 > 0.5 & P002 < 4)
+Idents(pbmcP002P023.singlet) <- "hash.ID"
+FeatureScatter(pbmcP002P023.singlet, feature1 = "P002", feature2 = "P023")
+```
+
+```{r}
+DefaultAssay(pbmcP002P023.hashtag) <- "HTO"
+pbmc.singlet_P023 <- subset(pbmcP002P023.hashtag, subset = P023 > 0.5 & P002 < 0.5)
+pbmc.singlet_P023$hash.ID <- "P023"
+Idents(pbmc.singlet_P023) <- "hash.ID"
+plotsP023<- FeatureScatter(pbmc.singlet_P023, feature1 = "P002", feature2 = "P023")
+patchwork::wrap_plots(plotsP023) * xlim(c(0, 4)) + ylim(c(0, 4))
+DefaultAssay(pbmc.singlet_P023) <- "RNA"
+```
+
+```{r}
+DefaultAssay(pbmcP002P023.hashtag) <- "HTO"
+pbmc.singlet_P002 <- subset(pbmcP002P023.hashtag, subset = P023 < 0.5 & P002 > 0.3)
+pbmc.singlet_P002$hash.ID <- "P002"
+Idents(pbmc.singlet_P002) <- "hash.ID"
+plotsP002<- FeatureScatter(pbmc.singlet_P002, feature1 = "P002", feature2 = "P023")
+patchwork::wrap_plots(plotsP002) * xlim(c(0, 4)) + ylim(c(0, 4))
+DefaultAssay(pbmc.singlet_P002) <- "RNA"
+```
+
+```{r}
+# Global classification results
+table(pbmc.singlet_P002$HTO_classification.global)
+```
+
+
+
+```{r}
+pbmc.singlet_P002[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_P002, pattern = "^MT-")
+VlnPlot(pbmc.singlet_P002, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+plot25 <- FeatureScatter(pbmc.singlet_P002, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot26 <- FeatureScatter(pbmc.singlet_P002, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot25 + plot26
+```
+```{r}
+pbmc.singlet_P002 <- subset(pbmc.singlet_P002, subset = nFeature_RNA > 500 & nFeature_RNA < 5000 & percent.mt < 15)
+VlnPlot(pbmc.singlet_P002, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+```
+
+```{r}
+#SCdblfinder
+set.seed(123)
+Idents (pbmc.singlet_P002)
+sce_P002 <- scDblFinder(GetAssayData(pbmc.singlet_P002, slot= "counts"))
+View(pbmc.singlet_P002@meta.data)
+#see metadata after doublet identification
+pbmc.singlet_P002$scDblFinder.class <- sce_P002$scDblFinder.class
+View(pbmc.singlet_P002@meta.data)
+#table(pbmc.singlet_P002@meta.data$scDblFinder.class)
+
+Idents(pbmc.singlet_P002) <-pbmc.singlet_P002@meta.data$scDblFinder.class
+Idents(pbmc.singlet_P002)
+
+VlnPlot(pbmc.singlet_P002, features= c("nFeature_RNA", "nCount_RNA"), ncol=2)
+pbmc.singlet_P002 <- subset(pbmc.singlet_P002, idents = "singlet")
+View(pbmc.singlet_P002@meta.data)
+saveRDS(pbmc.singlet_P002, "P002P023/pbmc.singlet_P002.rds")
+```
+
+######PatientP023###################
+
+```{r}
+#QC and filtering
+pbmc.singlet_P023[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_P023, pattern = "^MT-")
+VlnPlot(pbmc.singlet_P023, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+plot27 <- FeatureScatter(pbmc.singlet_P023, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot28 <- FeatureScatter(pbmc.singlet_P023, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot27 + plot28
+```
+
+```{r}
+pbmc.singlet_P023 <- subset(pbmc.singlet_P023, subset = nFeature_RNA > 500 & nFeature_RNA < 5000 & percent.mt < 20)
+VlnPlot(pbmc.singlet_P023, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+```
+
+```{r}
+#Scdblfinder
+Idents (pbmc.singlet_P023)
+sce_P023 <- scDblFinder(GetAssayData(pbmc.singlet_P023, slot= "counts"))
+
+#see metadata after doublet identification
+pbmc.singlet_P023$scDblFinder.class <- sce_P023$scDblFinder.class
+View(pbmc.singlet_P023@meta.data)
+table(pbmc.singlet_P023@meta.data$scDblFinder.class)
+#visualize the doublets
+Idents(pbmc.singlet_P023) <-pbmc.singlet_P023@meta.data$scDblFinder.class
+Idents(pbmc.singlet_P023)
+VlnPlot(pbmc.singlet_P023, features= c("nFeature_RNA", "nCount_RNA"), ncol=2)
+pbmc.singlet_P023 <- subset(pbmc.singlet_P023, idents = "singlet")
+View(pbmc.singlet_P023@meta.data)
+saveRDS(pbmc.singlet_P023, "P002P023/pbmc.singlet_P023.rds")
+```
+
+```{r}
+#P007P016
+
+# Load in the UMI matrix
+pbmcP007P016.umis <- P007P016$`Gene Expression`
+  
+# Load in the HTO count matrix
+pbmcP007P016.htos <- P007P016$`Antibody Capture`
+
+# Load in the Protein count matrix
+pbmcP007P016.adt <- P007P016$`Antibody Capture`
+
+# Select cell barcodes detected by both RNA and HTO In the example datasets we have already
+# filtered the cells for you, but perform this step for clarity.
+jointP007P016.bcs <- intersect(colnames(pbmcP007P016.umis), colnames(pbmcP007P016.htos))
+
+# Subset RNA and HTO counts by joint cell barcodes
+pbmcP007P016.umis <- pbmcP007P016.umis[, jointP007P016.bcs]
+pbmcP007P016.htos <- as.matrix(pbmcP007P016.htos[, jointP007P016.bcs])
+
+# Confirm that the HTO have the correct names
+rownames(pbmcP007P016.htos)
+
+# As we only want the b2M hashtags to label the sample well shorten it.
+
+short_htosP007P016 <- pbmcP007P016.htos[28:29,]
+rownames(short_htosP007P016) <- c("P007", "P016")
+rownames(short_htosP007P016)
+```
+
+```{r}
+#### Setup Seurat object and and normalise hashtag data
+# Setup Seurat object
+pbmcP007P016.hashtag <- CreateSeuratObject(counts = pbmcP007P016.umis)
+# Normalize RNA data with log normalization
+pbmcP007P016.hashtag <- NormalizeData(pbmcP007P016.hashtag)
+
+pbmcP007P016.hashtag <- FindVariableFeatures(pbmcP007P016.hashtag, selection.method = "vst", nfeatures = 2000)
+```
+
+#### Normalize HTO and Adding HTO data as an independent assay 
+
+```{r error=TRUE}
+# Add HTO data as a new assay independent from RNA
+pbmcP007P016.hashtag[["HTO"]] <- CreateAssayObject(counts = short_htosP007P016)
+short_adtP007P016 <- pbmcP007P016.htos[1:27,]
+rownames(short_adtP007P016)
+pbmcP007P016.hashtag[["ADT"]] <- CreateAssayObject(counts = short_adtP007P016)
+# Normalize HTO data, here we use centered log-ratio (CLR) transformation
+pbmcP007P016.hashtag <- NormalizeData(pbmcP007P016.hashtag, assay = "HTO", normalization.method = "CLR")
+#No addition of ADT
+#pbmc.hashtag <- NormalizeData(pbmc.hashtag, assay = "ADT", normalization.method = "CLR")
+```
+
+#### Demultiplex cells based on HTO enrichment
+
+```{r}
+pbmcP007P016.hashtag <- HTODemux(pbmcP007P016.hashtag, assay = "HTO", positive.quantile = 0.7, kfunc = "kmeans")
+#### Visualize demultiplexing results
+# Global classification results
+table(pbmcP007P016.hashtag$HTO_classification.global)
+```
+
+```{r error=TRUE}
+#### Visualize enrichment for selected HTOs with ridge plots
+# Group cells based on the max HTO signal
+Idents(pbmcP007P016.hashtag) <- "HTO_maxID"
+RidgePlot(pbmcP007P016.hashtag, assay = "HTO", features = rownames(pbmcP007P016.hashtag[["HTO"]])[1:2], ncol = 2)
+
+```
+
+```{r error=TRUE}
+
+Idents(pbmcP007P016.hashtag) <- "hash.ID"
+FeatureScatter(pbmcP007P016.hashtag, feature1 = "P007", feature2 = "P016")
+
+
+```
+
+```{r}
+DefaultAssay(pbmcP007P016.hashtag) <- "HTO"
+pbmcP007P016.singlet <- subset(pbmcP007P016.hashtag, subset = P016 > 0.5 & P007 < 4)
+Idents(pbmcP007P016.singlet) <- "hash.ID"
+FeatureScatter(pbmcP007P016.singlet, feature1 = "P007", feature2 = "P016")
+```
+# Create the initial scatter plot
+plotP016 <- FeatureScatter(pbmcP007P016.singlet, feature1 = "P007", feature2 = "P016")
+
+# Zoom in on the plot using coord_cartesian
+library(ggplot2)
+plotP016 + coord_cartesian(xlim = c(0, 2), ylim = c(0, 4))
+
+```{r}
+DefaultAssay(pbmcP007P016.hashtag) <- "HTO"
+pbmc.singlet_P016 <- subset(pbmcP007P016.hashtag, subset = P016 > 0.5 & P007 < 0.25)
+pbmc.singlet_P016$hash.ID <- "P016"
+Idents(pbmc.singlet_P016) <- "hash.ID"
+plotsP016<- FeatureScatter(pbmc.singlet_P016, feature1 = "P007", feature2 = "P016")
+patchwork::wrap_plots(plotsP016) * xlim(c(0, 4)) + ylim(c(0, 4))
+DefaultAssay(pbmc.singlet_P016) <- "RNA"
+```
+# Create the initial scatter plot
+plotP007 <- FeatureScatter(pbmcP007P016.hashtag, feature1 = "P007", feature2 = "P016")
+
+# Zoom in on the plot using coord_cartesian
+library(ggplot2)
+plotP007 + coord_cartesian(xlim = c(0, 4), ylim = c(0, 0.5))
+```{r}
+DefaultAssay(pbmcP007P016.hashtag) <- "HTO"
+pbmc.singlet_P007 <- subset(pbmcP007P016.hashtag, subset = P016 < 0.2 & P007 > 0.5)
+pbmc.singlet_P007$hash.ID <- "P007"
+Idents(pbmc.singlet_P007) <- "hash.ID"
+plotsP007<- FeatureScatter(pbmc.singlet_P007, feature1 = "P007", feature2 = "P016")
+patchwork::wrap_plots(plotsP007) * xlim(c(0, 4)) + ylim(c(0, 2))
+DefaultAssay(pbmc.singlet_P007) <- "RNA"
+```
+
+```{r}
+# Global classification results
+table(pbmc.singlet_P007$HTO_classification.global)
+table(pbmc.singlet_P016$HTO_classification.global)
+```
+
+
+
+```{r}
+pbmc.singlet_P007[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_P007, pattern = "^MT-")
+VlnPlot(pbmc.singlet_P007, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+plot29 <- FeatureScatter(pbmc.singlet_P007, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot30 <- FeatureScatter(pbmc.singlet_P007, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot29 + plot30
+```
+```{r}
+pbmc.singlet_P007 <- subset(pbmc.singlet_P007, subset = nFeature_RNA > 200 & nFeature_RNA < 5000 & percent.mt < 20)
+VlnPlot(pbmc.singlet_P007, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+```
+
+```{r}
+#SCdblfinder
+set.seed(123)
+Idents (pbmc.singlet_P007)
+sce_P007 <- scDblFinder(GetAssayData(pbmc.singlet_P007, slot= "counts"))
+View(pbmc.singlet_P007@meta.data)
+#see metadata after doublet identification
+pbmc.singlet_P007$scDblFinder.class <- sce_P007$scDblFinder.class
+View(pbmc.singlet_P007@meta.data)
+#table(pbmc.singlet_P007@meta.data$scDblFinder.class)
+
+Idents(pbmc.singlet_P007) <-pbmc.singlet_P007@meta.data$scDblFinder.class
+Idents(pbmc.singlet_P007)
+
+VlnPlot(pbmc.singlet_P007, features= c("nFeature_RNA", "nCount_RNA"), ncol=2)
+pbmc.singlet_P007 <- subset(pbmc.singlet_P007, idents = "singlet")
+View(pbmc.singlet_P007@meta.data)
+saveRDS(pbmc.singlet_P007, "P007P016/pbmc.singlet_P007.rds")
+```
+
+######PatientP016###################
+
+```{r}
+#QC and filtering
+pbmc.singlet_P016[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_P016, pattern = "^MT-")
+VlnPlot(pbmc.singlet_P016, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+plot31 <- FeatureScatter(pbmc.singlet_P016, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot32 <- FeatureScatter(pbmc.singlet_P016, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot31 + plot32
+```
+
+```{r}
+pbmc.singlet_P016 <- subset(pbmc.singlet_P016, subset = nFeature_RNA > 200 & nFeature_RNA < 5000 & percent.mt < 15)
+VlnPlot(pbmc.singlet_P016, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+```
+
+```{r}
+#Scdblfinder
+Idents (pbmc.singlet_P016)
+sce_P016 <- scDblFinder(GetAssayData(pbmc.singlet_P016, slot= "counts"))
+
+#see metadata after doublet identification
+pbmc.singlet_P016$scDblFinder.class <- sce_P016$scDblFinder.class
+View(pbmc.singlet_P016@meta.data)
+table(pbmc.singlet_P016@meta.data$scDblFinder.class)
+#visualize the doublets
+Idents(pbmc.singlet_P016) <-pbmc.singlet_P016@meta.data$scDblFinder.class
+Idents(pbmc.singlet_P016)
+VlnPlot(pbmc.singlet_P016, features= c("nFeature_RNA", "nCount_RNA"), ncol=2)
+pbmc.singlet_P016 <- subset(pbmc.singlet_P016, idents = "singlet")
+View(pbmc.singlet_P016@meta.data)
+saveRDS(pbmc.singlet_P016, "P007P016/pbmc.singlet_P016.rds")
+```
+```{r}
+#P008H054
+
+# Load in the UMI matrix
+pbmcP008H054.umis <- P008H054$`Gene Expression`
+  
+# Load in the HTO count matrix
+pbmcP008H054.htos <- P008H054$`Antibody Capture`
+
+# Load in the Protein count matrix
+pbmcP008H054.adt <- P008H054$`Antibody Capture`
+
+# Select cell barcodes detected by both RNA and HTO In the example datasets we have already
+# filtered the cells for you, but perform this step for clarity.
+jointP008H054.bcs <- intersect(colnames(pbmcP008H054.umis), colnames(pbmcP008H054.htos))
+
+# Subset RNA and HTO counts by joint cell barcodes
+pbmcP008H054.umis <- pbmcP008H054.umis[, jointP008H054.bcs]
+pbmcP008H054.htos <- as.matrix(pbmcP008H054.htos[, jointP008H054.bcs])
+
+# Confirm that the HTO have the correct names
+rownames(pbmcP008H054.htos)
+
+# As we only want the b2M hashtags to label the sample well shorten it.
+
+short_htosP008H054 <- pbmcP008H054.htos[28:29,]
+rownames(short_htosP008H054) <- c("P008", "H054")
+rownames(short_htosP008H054)
+```
+
+```{r}
+#### Setup Seurat object and and normalise hashtag data
+# Setup Seurat object
+pbmcP008H054.hashtag <- CreateSeuratObject(counts = pbmcP008H054.umis)
+# Normalize RNA data with log normalization
+pbmcP008H054.hashtag <- NormalizeData(pbmcP008H054.hashtag)
+
+pbmcP008H054.hashtag <- FindVariableFeatures(pbmcP008H054.hashtag, selection.method = "vst", nfeatures = 2000)
+```
+
+#### Normalize HTO and Adding HTO data as an independent assay 
+
+```{r error=TRUE}
+# Add HTO data as a new assay independent from RNA
+pbmcP008H054.hashtag[["HTO"]] <- CreateAssayObject(counts = short_htosP008H054)
+short_adtP008H054 <- pbmcP008H054.htos[1:27,]
+rownames(short_adtP008H054)
+pbmcP008H054.hashtag[["ADT"]] <- CreateAssayObject(counts = short_adtP008H054)
+# Normalize HTO data, here we use centered log-ratio (CLR) transformation
+pbmcP008H054.hashtag <- NormalizeData(pbmcP008H054.hashtag, assay = "HTO", normalization.method = "CLR")
+#No addition of ADT
+#pbmc.hashtag <- NormalizeData(pbmc.hashtag, assay = "ADT", normalization.method = "CLR")
+```
+
+#### Demultiplex cells based on HTO enrichment
+
+```{r}
+pbmcP008H054.hashtag <- HTODemux(pbmcP008H054.hashtag, assay = "HTO", positive.quantile = 0.7, kfunc = "kmeans")
+#### Visualize demultiplexing results
+# Global classification results
+table(pbmcP008H054.hashtag$HTO_classification.global)
+```
+
+```{r error=TRUE}
+#### Visualize enrichment for selected HTOs with ridge plots
+# Group cells based on the max HTO signal
+Idents(pbmcP008H054.hashtag) <- "HTO_maxID"
+RidgePlot(pbmcP008H054.hashtag, assay = "HTO", features = rownames(pbmcP008H054.hashtag[["HTO"]])[1:2], ncol = 2)
+
+```
+
+```{r error=TRUE}
+
+Idents(pbmcP008H054.hashtag) <- "hash.ID"
+FeatureScatter(pbmcP008H054.hashtag, feature1 = "P008", feature2 = "H054")
+
+
+```
+
+```{r}
+DefaultAssay(pbmcP008H054.hashtag) <- "HTO"
+pbmcP008H054.singlet <- subset(pbmcP008H054.hashtag, subset = H054 > 0.5 & P008 < 4)
+Idents(pbmcP008H054.singlet) <- "hash.ID"
+FeatureScatter(pbmcP008H054.singlet, feature1 = "P008", feature2 = "H054")
+```
+# Create the initial scatter plot
+plotH054 <- FeatureScatter(pbmcP008H054.singlet, feature1 = "P008", feature2 = "H054")
+
+# Zoom in on the plot using coord_cartesian
+library(ggplot2)
+plotH054 + coord_cartesian(xlim = c(0, 1), ylim = c(0, 4))
+
+```{r}
+DefaultAssay(pbmcP008H054.hashtag) <- "HTO"
+pbmc.singlet_H054 <- subset(pbmcP008H054.hashtag, subset = H054 > 0.5 & P008 < 0.6)
+pbmc.singlet_H054$hash.ID <- "H054"
+Idents(pbmc.singlet_H054) <- "hash.ID"
+plotsH054<- FeatureScatter(pbmc.singlet_H054, feature1 = "P008", feature2 = "H054")
+patchwork::wrap_plots(plotsH054) * xlim(c(0, 4)) + ylim(c(0, 4))
+DefaultAssay(pbmc.singlet_H054) <- "RNA"
+```
+# Create the initial scatter plot
+plotP008 <- FeatureScatter(pbmcP008H054.hashtag, feature1 = "P008", feature2 = "H054")
+
+# Zoom in on the plot using coord_cartesian
+library(ggplot2)
+plotP008 + coord_cartesian(xlim = c(0, 4), ylim = c(0, 0.5))
+```{r}
+DefaultAssay(pbmcP008H054.hashtag) <- "HTO"
+pbmc.singlet_P008 <- subset(pbmcP008H054.hashtag, subset = H054 < 0.4 & P008 > 0.6)
+pbmc.singlet_P008$hash.ID <- "P008"
+Idents(pbmc.singlet_P008) <- "hash.ID"
+plotsP008<- FeatureScatter(pbmc.singlet_P008, feature1 = "P008", feature2 = "H054")
+patchwork::wrap_plots(plotsP008) * xlim(c(0, 4)) + ylim(c(0, 2))
+DefaultAssay(pbmc.singlet_P008) <- "RNA"
+```
+
+```{r}
+# Global classification results
+table(pbmc.singlet_P008$HTO_classification.global)
+table(pbmc.singlet_H054$HTO_classification.global)
+```
+
+
+
+```{r}
+pbmc.singlet_P008[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_P008, pattern = "^MT-")
+VlnPlot(pbmc.singlet_P008, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+plot33 <- FeatureScatter(pbmc.singlet_P008, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot34 <- FeatureScatter(pbmc.singlet_P008, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot33 + plot34
+```
+```{r}
+pbmc.singlet_P008 <- subset(pbmc.singlet_P008, subset = nFeature_RNA > 500 & nFeature_RNA < 5000 & percent.mt < 20)
+VlnPlot(pbmc.singlet_P008, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+```
+
+```{r}
+#SCdblfinder
+set.seed(123)
+Idents (pbmc.singlet_P008)
+sce_P008 <- scDblFinder(GetAssayData(pbmc.singlet_P008, slot= "counts"))
+View(pbmc.singlet_P008@meta.data)
+#see metadata after doublet identification
+pbmc.singlet_P008$scDblFinder.class <- sce_P008$scDblFinder.class
+View(pbmc.singlet_P008@meta.data)
+#table(pbmc.singlet_P008@meta.data$scDblFinder.class)
+
+Idents(pbmc.singlet_P008) <-pbmc.singlet_P008@meta.data$scDblFinder.class
+Idents(pbmc.singlet_P008)
+
+VlnPlot(pbmc.singlet_P008, features= c("nFeature_RNA", "nCount_RNA"), ncol=2)
+pbmc.singlet_P008 <- subset(pbmc.singlet_P008, idents = "singlet")
+View(pbmc.singlet_P008@meta.data)
+saveRDS(pbmc.singlet_P008, "P008H054/pbmc.singlet_P008.rds")
+```
+
+######PatientH054###################
+
+```{r}
+#QC and filtering
+pbmc.singlet_H054[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_H054, pattern = "^MT-")
+VlnPlot(pbmc.singlet_H054, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+plot35 <- FeatureScatter(pbmc.singlet_H054, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot36 <- FeatureScatter(pbmc.singlet_H054, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot35 + plot36
+```
+
+```{r}
+pbmc.singlet_H054 <- subset(pbmc.singlet_H054, subset = nFeature_RNA > 500 & nFeature_RNA < 6000 & percent.mt < 20)
+VlnPlot(pbmc.singlet_H054, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+```
+
+```{r}
+#Scdblfinder
+Idents (pbmc.singlet_H054)
+sce_H054 <- scDblFinder(GetAssayData(pbmc.singlet_H054, slot= "counts"))
+
+#see metadata after doublet identification
+pbmc.singlet_H054$scDblFinder.class <- sce_H054$scDblFinder.class
+View(pbmc.singlet_H054@meta.data)
+table(pbmc.singlet_H054@meta.data$scDblFinder.class)
+#visualize the doublets
+Idents(pbmc.singlet_H054) <-pbmc.singlet_H054@meta.data$scDblFinder.class
+Idents(pbmc.singlet_H054)
+VlnPlot(pbmc.singlet_H054, features= c("nFeature_RNA", "nCount_RNA"), ncol=2)
+pbmc.singlet_H054 <- subset(pbmc.singlet_H054, idents = "singlet")
+View(pbmc.singlet_H054@meta.data)
+saveRDS(pbmc.singlet_H054, "P008H054/pbmc.singlet_H054.rds")
+```
+
+```{r}
+#P015P027
+
+# Load in the UMI matrix
+pbmcP015P027.umis <- P015P027$`Gene Expression`
+  
+# Load in the HTO count matrix
+pbmcP015P027.htos <- P015P027$`Antibody Capture`
+
+# Load in the Protein count matrix
+pbmcP015P027.adt <- P015P027$`Antibody Capture`
+
+# Select cell barcodes detected by both RNA and HTO In the example datasets we have already
+# filtered the cells for you, but perform this step for clarity.
+jointP015P027.bcs <- intersect(colnames(pbmcP015P027.umis), colnames(pbmcP015P027.htos))
+
+# Subset RNA and HTO counts by joint cell barcodes
+pbmcP015P027.umis <- pbmcP015P027.umis[, jointP015P027.bcs]
+pbmcP015P027.htos <- as.matrix(pbmcP015P027.htos[, jointP015P027.bcs])
+
+# Confirm that the HTO have the correct names
+rownames(pbmcP015P027.htos)
+
+# As we only want the b2M hashtags to label the sample well shorten it.
+
+short_htosP015P027 <- pbmcP015P027.htos[28:29,]
+rownames(short_htosP015P027) <- c("P015", "P027")
+rownames(short_htosP015P027)
+```
+
+```{r}
+#### Setup Seurat object and and normalise hashtag data
+# Setup Seurat object
+pbmcP015P027.hashtag <- CreateSeuratObject(counts = pbmcP015P027.umis)
+# Normalize RNA data with log normalization
+pbmcP015P027.hashtag <- NormalizeData(pbmcP015P027.hashtag)
+
+pbmcP015P027.hashtag <- FindVariableFeatures(pbmcP015P027.hashtag, selection.method = "vst", nfeatures = 2000)
+```
+
+#### Normalize HTO and Adding HTO data as an independent assay 
+
+```{r error=TRUE}
+# Add HTO data as a new assay independent from RNA
+pbmcP015P027.hashtag[["HTO"]] <- CreateAssayObject(counts = short_htosP015P027)
+short_adtP015P027 <- pbmcP015P027.htos[1:27,]
+rownames(short_adtP015P027)
+pbmcP015P027.hashtag[["ADT"]] <- CreateAssayObject(counts = short_adtP015P027)
+# Normalize HTO data, here we use centered log-ratio (CLR) transformation
+pbmcP015P027.hashtag <- NormalizeData(pbmcP015P027.hashtag, assay = "HTO", normalization.method = "CLR")
+#No addition of ADT
+#pbmc.hashtag <- NormalizeData(pbmc.hashtag, assay = "ADT", normalization.method = "CLR")
+```
+
+#### Demultiplex cells based on HTO enrichment
+
+```{r}
+pbmcP015P027.hashtag <- HTODemux(pbmcP015P027.hashtag, assay = "HTO", positive.quantile = 0.7, kfunc = "kmeans")
+#### Visualize demultiplexing results
+# Global classification results
+table(pbmcP015P027.hashtag$HTO_classification.global)
+```
+
+```{r error=TRUE}
+#### Visualize enrichment for selected HTOs with ridge plots
+# Group cells based on the max HTO signal
+Idents(pbmcP015P027.hashtag) <- "HTO_maxID"
+RidgePlot(pbmcP015P027.hashtag, assay = "HTO", features = rownames(pbmcP015P027.hashtag[["HTO"]])[1:2], ncol = 2)
+
+```
+
+```{r error=TRUE}
+
+Idents(pbmcP015P027.hashtag) <- "hash.ID"
+FeatureScatter(pbmcP015P027.hashtag, feature1 = "P015", feature2 = "P027")
+
+
+```
+
+```{r}
+DefaultAssay(pbmcP015P027.hashtag) <- "HTO"
+pbmcP015P027.singlet <- subset(pbmcP015P027.hashtag, subset = P027 > 0.7 & P015 < 4)
+Idents(pbmcP015P027.singlet) <- "hash.ID"
+FeatureScatter(pbmcP015P027.singlet, feature1 = "P015", feature2 = "P027")
+```
+# Create the initial scatter plot
+plotP027 <- FeatureScatter(pbmcP015P027.singlet, feature1 = "P015", feature2 = "P027")
+
+# Zoom in on the plot using coord_cartesian
+library(ggplot2)
+plotP027 + coord_cartesian(xlim = c(0, 1), ylim = c(0, 4))
+
+```{r}
+DefaultAssay(pbmcP015P027.hashtag) <- "HTO"
+pbmc.singlet_P027 <- subset(pbmcP015P027.hashtag, subset = P027 > 0.7 & P015 < 0.5)
+pbmc.singlet_P027$hash.ID <- "P027"
+Idents(pbmc.singlet_P027) <- "hash.ID"
+plotsP027<- FeatureScatter(pbmc.singlet_P027, feature1 = "P015", feature2 = "P027")
+patchwork::wrap_plots(plotsP027) * xlim(c(0, 4)) + ylim(c(0, 4))
+DefaultAssay(pbmc.singlet_P027) <- "RNA"
+```
+# Create the initial scatter plot
+plotP015 <- FeatureScatter(pbmcP015P027.hashtag, feature1 = "P015", feature2 = "P027")
+
+# Zoom in on the plot using coord_cartesian
+library(ggplot2)
+plotP015 + coord_cartesian(xlim = c(0, 4), ylim = c(0, 0.5))
+```{r}
+DefaultAssay(pbmcP015P027.hashtag) <- "HTO"
+pbmc.singlet_P015 <- subset(pbmcP015P027.hashtag, subset = P027 < 0.5 & P015 > 0.5)
+pbmc.singlet_P015$hash.ID <- "P015"
+Idents(pbmc.singlet_P015) <- "hash.ID"
+plotsP015<- FeatureScatter(pbmc.singlet_P015, feature1 = "P015", feature2 = "P027")
+patchwork::wrap_plots(plotsP015) * xlim(c(0, 4)) + ylim(c(0, 4))
+DefaultAssay(pbmc.singlet_P015) <- "RNA"
+```
+
+```{r}
+# Global classification results
+table(pbmc.singlet_P015$HTO_classification.global)
+table(pbmc.singlet_P027$HTO_classification.global)
+```
+
+
+
+```{r}
+pbmc.singlet_P015[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_P015, pattern = "^MT-")
+VlnPlot(pbmc.singlet_P015, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+plot37 <- FeatureScatter(pbmc.singlet_P015, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot38 <- FeatureScatter(pbmc.singlet_P015, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot37 + plot38
+```
+```{r}
+pbmc.singlet_P015 <- subset(pbmc.singlet_P015, subset = nFeature_RNA > 500 & nFeature_RNA < 5000 & percent.mt < 20)
+VlnPlot(pbmc.singlet_P015, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+```
+
+```{r}
+#SCdblfinder
+set.seed(123)
+Idents (pbmc.singlet_P015)
+sce_P015 <- scDblFinder(GetAssayData(pbmc.singlet_P015, slot= "counts"))
+View(pbmc.singlet_P015@meta.data)
+#see metadata after doublet identification
+pbmc.singlet_P015$scDblFinder.class <- sce_P015$scDblFinder.class
+View(pbmc.singlet_P015@meta.data)
+#table(pbmc.singlet_P015@meta.data$scDblFinder.class)
+
+Idents(pbmc.singlet_P015) <-pbmc.singlet_P015@meta.data$scDblFinder.class
+Idents(pbmc.singlet_P015)
+
+VlnPlot(pbmc.singlet_P015, features= c("nFeature_RNA", "nCount_RNA"), ncol=2)
+pbmc.singlet_P015 <- subset(pbmc.singlet_P015, idents = "singlet")
+View(pbmc.singlet_P015@meta.data)
+saveRDS(pbmc.singlet_P015, "P015P027/pbmc.singlet_P015.rds")
+```
+
+######PatientP027###################
+
+```{r}
+#QC and filtering
+pbmc.singlet_P027[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_P027, pattern = "^MT-")
+VlnPlot(pbmc.singlet_P027, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+plot39 <- FeatureScatter(pbmc.singlet_P027, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot40 <- FeatureScatter(pbmc.singlet_P027, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot39 + plot40
+```
+
+```{r}
+pbmc.singlet_P027 <- subset(pbmc.singlet_P027, subset = nFeature_RNA > 500 & nFeature_RNA < 5000 & percent.mt < 20)
+VlnPlot(pbmc.singlet_P027, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+```
+
+```{r}
+#Scdblfinder
+Idents (pbmc.singlet_P027)
+sce_P027 <- scDblFinder(GetAssayData(pbmc.singlet_P027, slot= "counts"))
+View(pbmc.singlet_P027@meta.data)
+
+#see metadata after doublet identification
+pbmc.singlet_P027$scDblFinder.class <- sce_P027$scDblFinder.class
+
+table(pbmc.singlet_P027@meta.data$scDblFinder.class)
+#visualize the doublets
+Idents(pbmc.singlet_P027) <-pbmc.singlet_P027@meta.data$scDblFinder.class
+Idents(pbmc.singlet_P027)
+VlnPlot(pbmc.singlet_P027, features= c("nFeature_RNA", "nCount_RNA"), ncol=2)
+pbmc.singlet_P027 <- subset(pbmc.singlet_P027, idents = "singlet")
+View(pbmc.singlet_P027@meta.data)
+saveRDS(pbmc.singlet_P027, "P015P027/pbmc.singlet_P027.rds")
+```
+```{r}
+#P017H044
+
+# Load in the UMI matrix
+pbmcP017H044.umis <- P017H044$`Gene Expression`
+  
+# Load in the HTO count matrix
+pbmcP017H044.htos <- P017H044$`Antibody Capture`
+
+# Load in the Protein count matrix
+pbmcP017H044.adt <- P017H044$`Antibody Capture`
+
+# Select cell barcodes detected by both RNA and HTO In the example datasets we have already
+# filtered the cells for you, but perform this step for clarity.
+jointP017H044.bcs <- intersect(colnames(pbmcP017H044.umis), colnames(pbmcP017H044.htos))
+
+# Subset RNA and HTO counts by joint cell barcodes
+pbmcP017H044.umis <- pbmcP017H044.umis[, jointP017H044.bcs]
+pbmcP017H044.htos <- as.matrix(pbmcP017H044.htos[, jointP017H044.bcs])
+
+# Confirm that the HTO have the correct names
+rownames(pbmcP017H044.htos)
+
+# As we only want the b2M hashtags to label the sample well shorten it.
+
+short_htosP017H044 <- pbmcP017H044.htos[28:29,]
+rownames(short_htosP017H044) <- c("P017", "H044")
+rownames(short_htosP017H044)
+```
+
+```{r}
+#### Setup Seurat object and and normalise hashtag data
+# Setup Seurat object
+pbmcP017H044.hashtag <- CreateSeuratObject(counts = pbmcP017H044.umis)
+# Normalize RNA data with log normalization
+pbmcP017H044.hashtag <- NormalizeData(pbmcP017H044.hashtag)
+
+pbmcP017H044.hashtag <- FindVariableFeatures(pbmcP017H044.hashtag, selection.method = "vst", nfeatures = 2000)
+```
+
+#### Normalize HTO and Adding HTO data as an independent assay 
+
+```{r error=TRUE}
+# Add HTO data as a new assay independent from RNA
+pbmcP017H044.hashtag[["HTO"]] <- CreateAssayObject(counts = short_htosP017H044)
+short_adtP017H044 <- pbmcP017H044.htos[1:27,]
+rownames(short_adtP017H044)
+pbmcP017H044.hashtag[["ADT"]] <- CreateAssayObject(counts = short_adtP017H044)
+# Normalize HTO data, here we use centered log-ratio (CLR) transformation
+pbmcP017H044.hashtag <- NormalizeData(pbmcP017H044.hashtag, assay = "HTO", normalization.method = "CLR")
+#No addition of ADT
+#pbmc.hashtag <- NormalizeData(pbmc.hashtag, assay = "ADT", normalization.method = "CLR")
+```
+
+#### Demultiplex cells based on HTO enrichment
+
+```{r}
+pbmcP017H044.hashtag <- HTODemux(pbmcP017H044.hashtag, assay = "HTO", positive.quantile = 0.7, kfunc = "kmeans")
+#### Visualize demultiplexing results
+# Global classification results
+table(pbmcP017H044.hashtag$HTO_classification.global)
+```
+
+```{r error=TRUE}
+#### Visualize enrichment for selected HTOs with ridge plots
+# Group cells based on the max HTO signal
+Idents(pbmcP017H044.hashtag) <- "HTO_maxID"
+RidgePlot(pbmcP017H044.hashtag, assay = "HTO", features = rownames(pbmcP017H044.hashtag[["HTO"]])[1:2], ncol = 2)
+
+```
+
+```{r error=TRUE}
+
+Idents(pbmcP017H044.hashtag) <- "hash.ID"
+FeatureScatter(pbmcP017H044.hashtag, feature1 = "P017", feature2 = "H044")
+
+
+```
+
+```{r}
+DefaultAssay(pbmcP017H044.hashtag) <- "HTO"
+pbmcP017H044.singlet <- subset(pbmcP017H044.hashtag, subset = H044 > 0.5 & P017 < 4)
+Idents(pbmcP017H044.singlet) <- "hash.ID"
+FeatureScatter(pbmcP017H044.singlet, feature1 = "P017", feature2 = "H044")
+```
+# Create the initial scatter plot
+plotH044 <- FeatureScatter(pbmcP017H044.singlet, feature1 = "P017", feature2 = "H044")
+
+# Zoom in on the plot using coord_cartesian
+library(ggplot2)
+plotH044 + coord_cartesian(xlim = c(0, 1), ylim = c(0, 4))
+
+```{r}
+DefaultAssay(pbmcP017H044.hashtag) <- "HTO"
+pbmc.singlet_H044 <- subset(pbmcP017H044.hashtag, subset = H044 > 0.5 & P017 < 0.5)
+pbmc.singlet_H044$hash.ID <- "H044"
+Idents(pbmc.singlet_H044) <- "hash.ID"
+plotsH044<- FeatureScatter(pbmc.singlet_H044, feature1 = "P017", feature2 = "H044")
+patchwork::wrap_plots(plotsH044) * xlim(c(0, 4)) + ylim(c(0, 4))
+DefaultAssay(pbmc.singlet_H044) <- "RNA"
+```
+# Create the initial scatter plot
+plotP017 <- FeatureScatter(pbmcP017H044.hashtag, feature1 = "P017", feature2 = "H044")
+
+# Zoom in on the plot using coord_cartesian
+library(ggplot2)
+plotP017 + coord_cartesian(xlim = c(0, 4), ylim = c(0, 0.5))
+```{r}
+DefaultAssay(pbmcP017H044.hashtag) <- "HTO"
+pbmc.singlet_P017 <- subset(pbmcP017H044.hashtag, subset = H044 < 0.41 & P017 > 0.5)
+pbmc.singlet_P017$hash.ID <- "P017"
+Idents(pbmc.singlet_P017) <- "hash.ID"
+plotsP017<- FeatureScatter(pbmc.singlet_P017, feature1 = "P017", feature2 = "H044")
+patchwork::wrap_plots(plotsP017) * xlim(c(0, 4)) + ylim(c(0, 4))
+DefaultAssay(pbmc.singlet_P017) <- "RNA"
+```
+
+```{r}
+# Global classification results
+table(pbmc.singlet_P017$HTO_classification.global)
+table(pbmc.singlet_H044$HTO_classification.global)
+```
+
+
+
+```{r}
+pbmc.singlet_P017[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_P017, pattern = "^MT-")
+VlnPlot(pbmc.singlet_P017, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+plot41 <- FeatureScatter(pbmc.singlet_P017, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot42 <- FeatureScatter(pbmc.singlet_P017, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot41 + plot42
+```
+```{r}
+pbmc.singlet_P017 <- subset(pbmc.singlet_P017, subset = nFeature_RNA > 500 & nFeature_RNA < 5000 & percent.mt < 20)
+VlnPlot(pbmc.singlet_P017, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+```
+
+```{r}
+#SCdblfinder
+set.seed(123)
+Idents (pbmc.singlet_P017)
+sce_P017 <- scDblFinder(GetAssayData(pbmc.singlet_P017, slot= "counts"))
+View(pbmc.singlet_P017@meta.data)
+#see metadata after doublet identification
+pbmc.singlet_P017$scDblFinder.class <- sce_P017$scDblFinder.class
+View(pbmc.singlet_P017@meta.data)
+#table(pbmc.singlet_P017@meta.data$scDblFinder.class)
+
+Idents(pbmc.singlet_P017) <-pbmc.singlet_P017@meta.data$scDblFinder.class
+Idents(pbmc.singlet_P017)
+
+VlnPlot(pbmc.singlet_P017, features= c("nFeature_RNA", "nCount_RNA"), ncol=2)
+pbmc.singlet_P017 <- subset(pbmc.singlet_P017, idents = "singlet")
+View(pbmc.singlet_P017@meta.data)
+saveRDS(pbmc.singlet_P017, "P017H044/pbmc.singlet_P017.rds")
+```
+
+######PatientH044###################
+
+```{r}
+#QC and filtering
+pbmc.singlet_H044[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_H044, pattern = "^MT-")
+VlnPlot(pbmc.singlet_H044, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+plot43 <- FeatureScatter(pbmc.singlet_H044, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot44 <- FeatureScatter(pbmc.singlet_H044, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot43 + plot44
+```
+
+```{r}
+pbmc.singlet_H044 <- subset(pbmc.singlet_H044, subset = nFeature_RNA > 500 & nFeature_RNA < 5000 & percent.mt < 20)
+VlnPlot(pbmc.singlet_H044, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+```
+
+```{r}
+#Scdblfinder
+Idents (pbmc.singlet_H044)
+sce_H044 <- scDblFinder(GetAssayData(pbmc.singlet_H044, slot= "counts"))
+View(pbmc.singlet_H044@meta.data)
+
+#see metadata after doublet identification
+pbmc.singlet_H044$scDblFinder.class <- sce_H044$scDblFinder.class
+
+table(pbmc.singlet_H044@meta.data$scDblFinder.class)
+#visualize the doublets
+Idents(pbmc.singlet_H044) <-pbmc.singlet_H044@meta.data$scDblFinder.class
+Idents(pbmc.singlet_H044)
+VlnPlot(pbmc.singlet_H044, features= c("nFeature_RNA", "nCount_RNA"), ncol=2)
+pbmc.singlet_H044 <- subset(pbmc.singlet_H044, idents = "singlet")
+View(pbmc.singlet_H044@meta.data)
+saveRDS(pbmc.singlet_H044, "P017H044/pbmc.singlet_H044.rds")
+```
+
+```{r}
+#P018P014
+
+# Load in the UMI matrix
+pbmcP018P014.umis <- P018P014$`Gene Expression`
+  
+# Load in the HTO count matrix
+pbmcP018P014.htos <- P018P014$`Antibody Capture`
+
+# Load in the Protein count matrix
+pbmcP018P014.adt <- P018P014$`Antibody Capture`
+
+# Select cell barcodes detected by both RNA and HTO In the example datasets we have already
+# filtered the cells for you, but perform this step for clarity.
+jointP018P014.bcs <- intersect(colnames(pbmcP018P014.umis), colnames(pbmcP018P014.htos))
+
+# Subset RNA and HTO counts by joint cell barcodes
+pbmcP018P014.umis <- pbmcP018P014.umis[, jointP018P014.bcs]
+pbmcP018P014.htos <- as.matrix(pbmcP018P014.htos[, jointP018P014.bcs])
+
+# Confirm that the HTO have the correct names
+rownames(pbmcP018P014.htos)
+
+# As we only want the b2M hashtags to label the sample well shorten it.
+
+short_htosP018P014 <- pbmcP018P014.htos[28:29,]
+rownames(short_htosP018P014) <- c("P018", "P014")
+rownames(short_htosP018P014)
+```
+
+```{r}
+#### Setup Seurat object and and normalise hashtag data
+# Setup Seurat object
+pbmcP018P014.hashtag <- CreateSeuratObject(counts = pbmcP018P014.umis)
+# Normalize RNA data with log normalization
+pbmcP018P014.hashtag <- NormalizeData(pbmcP018P014.hashtag)
+
+pbmcP018P014.hashtag <- FindVariableFeatures(pbmcP018P014.hashtag, selection.method = "vst", nfeatures = 2000)
+```
+
+#### Normalize HTO and Adding HTO data as an independent assay 
+
+```{r error=TRUE}
+# Add HTO data as a new assay independent from RNA
+pbmcP018P014.hashtag[["HTO"]] <- CreateAssayObject(counts = short_htosP018P014)
+short_adtP018P014 <- pbmcP018P014.htos[1:27,]
+rownames(short_adtP018P014)
+pbmcP018P014.hashtag[["ADT"]] <- CreateAssayObject(counts = short_adtP018P014)
+# Normalize HTO data, here we use centered log-ratio (CLR) transformation
+pbmcP018P014.hashtag <- NormalizeData(pbmcP018P014.hashtag, assay = "HTO", normalization.method = "CLR")
+#No addition of ADT
+#pbmc.hashtag <- NormalizeData(pbmc.hashtag, assay = "ADT", normalization.method = "CLR")
+```
+
+#### Demultiplex cells based on HTO enrichment
+
+```{r}
+pbmcP018P014.hashtag <- HTODemux(pbmcP018P014.hashtag, assay = "HTO", positive.quantile = 0.7, kfunc = "kmeans")
+#### Visualize demultiplexing results
+# Global classification results
+table(pbmcP018P014.hashtag$HTO_classification.global)
+```
+
+```{r error=TRUE}
+#### Visualize enrichment for selected HTOs with ridge plots
+# Group cells based on the max HTO signal
+Idents(pbmcP018P014.hashtag) <- "HTO_maxID"
+RidgePlot(pbmcP018P014.hashtag, assay = "HTO", features = rownames(pbmcP018P014.hashtag[["HTO"]])[1:2], ncol = 2)
+
+```
+
+```{r error=TRUE}
+
+Idents(pbmcP018P014.hashtag) <- "hash.ID"
+FeatureScatter(pbmcP018P014.hashtag, feature1 = "P018", feature2 = "P014")
+
+
+```
+
+```{r}
+DefaultAssay(pbmcP018P014.hashtag) <- "HTO"
+pbmcP018P014.singlet <- subset(pbmcP018P014.hashtag, subset = P014 > 0.5 & P018 < 4)
+Idents(pbmcP018P014.singlet) <- "hash.ID"
+FeatureScatter(pbmcP018P014.singlet, feature1 = "P018", feature2 = "P014")
+```
+# Create the initial scatter plot
+plotP014 <- FeatureScatter(pbmcP018P014.singlet, feature1 = "P018", feature2 = "P014")
+
+# Zoom in on the plot using coord_cartesian
+library(ggplot2)
+plotP014 + coord_cartesian(xlim = c(0, 1), ylim = c(0, 4))
+
+```{r}
+DefaultAssay(pbmcP018P014.hashtag) <- "HTO"
+pbmc.singlet_P014 <- subset(pbmcP018P014.hashtag, subset = P014 > 0.5 & P018 < 0.25)
+pbmc.singlet_P014$hash.ID <- "P014"
+Idents(pbmc.singlet_P014) <- "hash.ID"
+plotsP014<- FeatureScatter(pbmc.singlet_P014, feature1 = "P018", feature2 = "P014")
+patchwork::wrap_plots(plotsP014) * xlim(c(0, 4)) + ylim(c(0, 4))
+DefaultAssay(pbmc.singlet_P014) <- "RNA"
+```
+# Create the initial scatter plot
+plotP018 <- FeatureScatter(pbmcP018P014.hashtag, feature1 = "P018", feature2 = "P014")
+
+# Zoom in on the plot using coord_cartesian
+library(ggplot2)
+plotP018 + coord_cartesian(xlim = c(0, 4), ylim = c(0, 0.5))
+```{r}
+DefaultAssay(pbmcP018P014.hashtag) <- "HTO"
+pbmc.singlet_P018 <- subset(pbmcP018P014.hashtag, subset = P014 < 0.45 & P018 > 0.5)
+pbmc.singlet_P018$hash.ID <- "P018"
+Idents(pbmc.singlet_P018) <- "hash.ID"
+plotsP018<- FeatureScatter(pbmc.singlet_P018, feature1 = "P018", feature2 = "P014")
+patchwork::wrap_plots(plotsP018) * xlim(c(0, 4)) + ylim(c(0, 4))
+DefaultAssay(pbmc.singlet_P018) <- "RNA"
+```
+
+```{r}
+# Global classification results
+table(pbmc.singlet_P018$HTO_classification.global)
+table(pbmc.singlet_P014$HTO_classification.global)
+```
+
+
+
+```{r}
+pbmc.singlet_P018[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_P018, pattern = "^MT-")
+VlnPlot(pbmc.singlet_P018, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+plot45 <- FeatureScatter(pbmc.singlet_P018, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot46 <- FeatureScatter(pbmc.singlet_P018, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot45 + plot46
+```
+```{r}
+pbmc.singlet_P018 <- subset(pbmc.singlet_P018, subset = nFeature_RNA > 200 & nFeature_RNA < 6000 & percent.mt < 20)
+VlnPlot(pbmc.singlet_P018, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+```
+
+```{r}
+#SCdblfinder
+set.seed(123)
+Idents (pbmc.singlet_P018)
+sce_P018 <- scDblFinder(GetAssayData(pbmc.singlet_P018, slot= "counts"))
+View(pbmc.singlet_P018@meta.data)
+#see metadata after doublet identification
+pbmc.singlet_P018$scDblFinder.class <- sce_P018$scDblFinder.class
+View(pbmc.singlet_P018@meta.data)
+#table(pbmc.singlet_P018@meta.data$scDblFinder.class)
+
+Idents(pbmc.singlet_P018) <-pbmc.singlet_P018@meta.data$scDblFinder.class
+Idents(pbmc.singlet_P018)
+
+VlnPlot(pbmc.singlet_P018, features= c("nFeature_RNA", "nCount_RNA"), ncol=2)
+pbmc.singlet_P018 <- subset(pbmc.singlet_P018, idents = "singlet")
+View(pbmc.singlet_P018@meta.data)
+saveRDS(pbmc.singlet_P018, "P018P014/pbmc.singlet_P018.rds")
+```
+
+######PatientP014###################
+
+```{r}
+#QC and filtering
+pbmc.singlet_P014[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_P014, pattern = "^MT-")
+VlnPlot(pbmc.singlet_P014, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+plot47 <- FeatureScatter(pbmc.singlet_P014, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot48 <- FeatureScatter(pbmc.singlet_P014, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot47 + plot48
+```
+
+```{r}
+pbmc.singlet_P014 <- subset(pbmc.singlet_P014, subset = nFeature_RNA > 200 & nFeature_RNA < 5000 & percent.mt < 20)
+VlnPlot(pbmc.singlet_P014, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+```
+
+```{r}
+#Scdblfinder
+Idents (pbmc.singlet_P014)
+sce_P014 <- scDblFinder(GetAssayData(pbmc.singlet_P014, slot= "counts"))
+View(pbmc.singlet_P014@meta.data)
+
+#see metadata after doublet identification
+pbmc.singlet_P014$scDblFinder.class <- sce_P014$scDblFinder.class
+
+table(pbmc.singlet_P014@meta.data$scDblFinder.class)
+#visualize the doublets
+Idents(pbmc.singlet_P014) <-pbmc.singlet_P014@meta.data$scDblFinder.class
+Idents(pbmc.singlet_P014)
+VlnPlot(pbmc.singlet_P014, features= c("nFeature_RNA", "nCount_RNA"), ncol=2)
+pbmc.singlet_P014 <- subset(pbmc.singlet_P014, idents = "singlet")
+View(pbmc.singlet_P014@meta.data)
+saveRDS(pbmc.singlet_P014, "P018P014/pbmc.singlet_P014.rds")
+```
+
+```{r}
+#P020P010
+
+# Load in the UMI matrix
+pbmcP020P010.umis <- P020P010$`Gene Expression`
+  
+# Load in the HTO count matrix
+pbmcP020P010.htos <- P020P010$`Antibody Capture`
+
+# Load in the Protein count matrix
+pbmcP020P010.adt <- P020P010$`Antibody Capture`
+
+# Select cell barcodes detected by both RNA and HTO In the example datasets we have already
+# filtered the cells for you, but perform this step for clarity.
+jointP020P010.bcs <- intersect(colnames(pbmcP020P010.umis), colnames(pbmcP020P010.htos))
+
+# Subset RNA and HTO counts by joint cell barcodes
+pbmcP020P010.umis <- pbmcP020P010.umis[, jointP020P010.bcs]
+pbmcP020P010.htos <- as.matrix(pbmcP020P010.htos[, jointP020P010.bcs])
+
+# Confirm that the HTO have the correct names
+rownames(pbmcP020P010.htos)
+
+# As we only want the b2M hashtags to label the sample well shorten it.
+
+short_htosP020P010 <- pbmcP020P010.htos[28:29,]
+rownames(short_htosP020P010) <- c("P020", "P010")
+rownames(short_htosP020P010)
+```
+
+```{r}
+#### Setup Seurat object and and normalise hashtag data
+# Setup Seurat object
+pbmcP020P010.hashtag <- CreateSeuratObject(counts = pbmcP020P010.umis)
+# Normalize RNA data with log normalization
+pbmcP020P010.hashtag <- NormalizeData(pbmcP020P010.hashtag)
+
+pbmcP020P010.hashtag <- FindVariableFeatures(pbmcP020P010.hashtag, selection.method = "vst", nfeatures = 2000)
+```
+
+#### Normalize HTO and Adding HTO data as an independent assay 
+
+```{r error=TRUE}
+# Add HTO data as a new assay independent from RNA
+pbmcP020P010.hashtag[["HTO"]] <- CreateAssayObject(counts = short_htosP020P010)
+short_adtP020P010 <- pbmcP020P010.htos[1:27,]
+rownames(short_adtP020P010)
+pbmcP020P010.hashtag[["ADT"]] <- CreateAssayObject(counts = short_adtP020P010)
+# Normalize HTO data, here we use centered log-ratio (CLR) transformation
+pbmcP020P010.hashtag <- NormalizeData(pbmcP020P010.hashtag, assay = "HTO", normalization.method = "CLR")
+#No addition of ADT
+#pbmc.hashtag <- NormalizeData(pbmc.hashtag, assay = "ADT", normalization.method = "CLR")
+```
+
+#### Demultiplex cells based on HTO enrichment
+
+```{r}
+pbmcP020P010.hashtag <- HTODemux(pbmcP020P010.hashtag, assay = "HTO", positive.quantile = 0.7, kfunc = "kmeans")
+#### Visualize demultiplexing results
+# Global classification results
+table(pbmcP020P010.hashtag$HTO_classification.global)
+```
+
+```{r error=TRUE}
+#### Visualize enrichment for selected HTOs with ridge plots
+# Group cells based on the max HTO signal
+Idents(pbmcP020P010.hashtag) <- "HTO_maxID"
+RidgePlot(pbmcP020P010.hashtag, assay = "HTO", features = rownames(pbmcP020P010.hashtag[["HTO"]])[1:2], ncol = 2)
+
+```
+
+```{r error=TRUE}
+
+Idents(pbmcP020P010.hashtag) <- "hash.ID"
+FeatureScatter(pbmcP020P010.hashtag, feature1 = "P020", feature2 = "P010")
+
+
+```
+
+```{r}
+DefaultAssay(pbmcP020P010.hashtag) <- "HTO"
+pbmcP020P010.singlet <- subset(pbmcP020P010.hashtag, subset = P010 > 0.5 & P020 < 4)
+Idents(pbmcP020P010.singlet) <- "hash.ID"
+FeatureScatter(pbmcP020P010.singlet, feature1 = "P020", feature2 = "P010")
+```
+# Create the initial scatter plot
+plotP010 <- FeatureScatter(pbmcP020P010.hashtag, feature1 = "P020", feature2 = "P010")
+
+# Zoom in on the plot using coord_cartesian
+library(ggplot2)
+plotP010 + coord_cartesian(xlim = c(0, 1), ylim = c(0, 4))
+
+```{r}
+DefaultAssay(pbmcP020P010.hashtag) <- "HTO"
+pbmc.singlet_P010 <- subset(pbmcP020P010.hashtag, subset = P010 > 0.5 & P020 < 0.45)
+pbmc.singlet_P010$hash.ID <- "P010"
+Idents(pbmc.singlet_P010) <- "hash.ID"
+plotsP010<- FeatureScatter(pbmc.singlet_P010, feature1 = "P020", feature2 = "P010")
+patchwork::wrap_plots(plotsP010) * xlim(c(0, 4)) + ylim(c(0, 4))
+DefaultAssay(pbmc.singlet_P010) <- "RNA"
+```
+# Create the initial scatter plot
+plotP020 <- FeatureScatter(pbmcP020P010.hashtag, feature1 = "P020", feature2 = "P010")
+
+# Zoom in on the plot using coord_cartesian
+library(ggplot2)
+plotP020 + coord_cartesian(xlim = c(0, 4), ylim = c(0, 0.5))
+```{r}
+DefaultAssay(pbmcP020P010.hashtag) <- "HTO"
+pbmc.singlet_P020 <- subset(pbmcP020P010.hashtag, subset = P010 < 0.40 & P020 > 0.5)
+pbmc.singlet_P020$hash.ID <- "P020"
+Idents(pbmc.singlet_P020) <- "hash.ID"
+plotsP020<- FeatureScatter(pbmc.singlet_P020, feature1 = "P020", feature2 = "P010")
+patchwork::wrap_plots(plotsP020) * xlim(c(0, 4)) + ylim(c(0, 4))
+DefaultAssay(pbmc.singlet_P020) <- "RNA"
+```
+
+```{r}
+# Global classification results
+table(pbmc.singlet_P020$HTO_classification.global)
+table(pbmc.singlet_P010$HTO_classification.global)
+```
+
+
+
+```{r}
+pbmc.singlet_P020[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_P020, pattern = "^MT-")
+VlnPlot(pbmc.singlet_P020, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+plot49 <- FeatureScatter(pbmc.singlet_P020, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot50 <- FeatureScatter(pbmc.singlet_P020, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot49 + plot50
+```
+```{r}
+pbmc.singlet_P020 <- subset(pbmc.singlet_P020, subset = nFeature_RNA > 500 & nFeature_RNA < 5000 & percent.mt < 20)
+VlnPlot(pbmc.singlet_P020, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+```
+
+```{r}
+#SCdblfinder
+set.seed(123)
+Idents (pbmc.singlet_P020)
+sce_P020 <- scDblFinder(GetAssayData(pbmc.singlet_P020, slot= "counts"))
+View(pbmc.singlet_P020@meta.data)
+#see metadata after doublet identification
+pbmc.singlet_P020$scDblFinder.class <- sce_P020$scDblFinder.class
+View(pbmc.singlet_P020@meta.data)
+#table(pbmc.singlet_P020@meta.data$scDblFinder.class)
+
+Idents(pbmc.singlet_P020) <-pbmc.singlet_P020@meta.data$scDblFinder.class
+Idents(pbmc.singlet_P020)
+
+VlnPlot(pbmc.singlet_P020, features= c("nFeature_RNA", "nCount_RNA"), ncol=2)
+pbmc.singlet_P020 <- subset(pbmc.singlet_P020, idents = "singlet")
+View(pbmc.singlet_P020@meta.data)
+saveRDS(pbmc.singlet_P020, "P020P010/pbmc.singlet_P020.rds")
+```
+
+######PatientP010###################
+
+```{r}
+#QC and filtering
+pbmc.singlet_P010[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_P010, pattern = "^MT-")
+VlnPlot(pbmc.singlet_P010, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+plot51 <- FeatureScatter(pbmc.singlet_P010, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot52 <- FeatureScatter(pbmc.singlet_P010, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot51 + plot52
+```
+
+```{r}
+pbmc.singlet_P010 <- subset(pbmc.singlet_P010, subset = nFeature_RNA > 200 & nFeature_RNA < 5000 & percent.mt < 20)
+VlnPlot(pbmc.singlet_P010, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+```
+
+```{r}
+#Scdblfinder
+Idents (pbmc.singlet_P010)
+sce_P010 <- scDblFinder(GetAssayData(pbmc.singlet_P010, slot= "counts"))
+View(pbmc.singlet_P010@meta.data)
+
+#see metadata after doublet identification
+pbmc.singlet_P010$scDblFinder.class <- sce_P010$scDblFinder.class
+
+table(pbmc.singlet_P010@meta.data$scDblFinder.class)
+#visualize the doublets
+Idents(pbmc.singlet_P010) <-pbmc.singlet_P010@meta.data$scDblFinder.class
+Idents(pbmc.singlet_P010)
+VlnPlot(pbmc.singlet_P010, features= c("nFeature_RNA", "nCount_RNA"), ncol=2)
+pbmc.singlet_P010 <- subset(pbmc.singlet_P010, idents = "singlet")
+View(pbmc.singlet_P010@meta.data)
+saveRDS(pbmc.singlet_P010, "P020P010/pbmc.singlet_P010.rds")
+```
+
+```{r}
+#P021P028
+
+# Load in the UMI matrix
+pbmcP021P028.umis <- P021P028$`Gene Expression`
+  
+# Load in the HTO count matrix
+pbmcP021P028.htos <- P021P028$`Antibody Capture`
+
+# Load in the Protein count matrix
+pbmcP021P028.adt <- P021P028$`Antibody Capture`
+
+# Select cell barcodes detected by both RNA and HTO In the example datasets we have already
+# filtered the cells for you, but perform this step for clarity.
+jointP021P028.bcs <- intersect(colnames(pbmcP021P028.umis), colnames(pbmcP021P028.htos))
+
+# Subset RNA and HTO counts by joint cell barcodes
+pbmcP021P028.umis <- pbmcP021P028.umis[, jointP021P028.bcs]
+pbmcP021P028.htos <- as.matrix(pbmcP021P028.htos[, jointP021P028.bcs])
+
+# Confirm that the HTO have the correct names
+rownames(pbmcP021P028.htos)
+
+# As we only want the b2M hashtags to label the sample well shorten it.
+
+short_htosP021P028 <- pbmcP021P028.htos[28:29,]
+rownames(short_htosP021P028) <- c("P021", "P028")
+rownames(short_htosP021P028)
+```
+
+```{r}
+#### Setup Seurat object and and normalise hashtag data
+# Setup Seurat object
+pbmcP021P028.hashtag <- CreateSeuratObject(counts = pbmcP021P028.umis)
+# Normalize RNA data with log normalization
+pbmcP021P028.hashtag <- NormalizeData(pbmcP021P028.hashtag)
+
+pbmcP021P028.hashtag <- FindVariableFeatures(pbmcP021P028.hashtag, selection.method = "vst", nfeatures = 2000)
+```
+
+#### Normalize HTO and Adding HTO data as an independent assay 
+
+```{r error=TRUE}
+# Add HTO data as a new assay independent from RNA
+pbmcP021P028.hashtag[["HTO"]] <- CreateAssayObject(counts = short_htosP021P028)
+short_adtP021P028 <- pbmcP021P028.htos[1:27,]
+rownames(short_adtP021P028)
+pbmcP021P028.hashtag[["ADT"]] <- CreateAssayObject(counts = short_adtP021P028)
+# Normalize HTO data, here we use centered log-ratio (CLR) transformation
+pbmcP021P028.hashtag <- NormalizeData(pbmcP021P028.hashtag, assay = "HTO", normalization.method = "CLR")
+#No addition of ADT
+#pbmc.hashtag <- NormalizeData(pbmc.hashtag, assay = "ADT", normalization.method = "CLR")
+```
+
+#### Demultiplex cells based on HTO enrichment
+
+```{r}
+pbmcP021P028.hashtag <- HTODemux(pbmcP021P028.hashtag, assay = "HTO", positive.quantile = 0.7, kfunc = "kmeans")
+#### Visualize demultiplexing results
+# Global classification results
+table(pbmcP021P028.hashtag$HTO_classification.global)
+```
+
+```{r error=TRUE}
+#### Visualize enrichment for selected HTOs with ridge plots
+# Group cells based on the max HTO signal
+Idents(pbmcP021P028.hashtag) <- "HTO_maxID"
+RidgePlot(pbmcP021P028.hashtag, assay = "HTO", features = rownames(pbmcP021P028.hashtag[["HTO"]])[1:2], ncol = 2)
+
+```
+
+```{r error=TRUE}
+
+Idents(pbmcP021P028.hashtag) <- "hash.ID"
+FeatureScatter(pbmcP021P028.hashtag, feature1 = "P021", feature2 = "P028")
+
+
+```
+
+```{r}
+DefaultAssay(pbmcP021P028.hashtag) <- "HTO"
+pbmcP021P028.singlet <- subset(pbmcP021P028.hashtag, subset = P028 > 0.5 & P021 < 4)
+Idents(pbmcP021P028.singlet) <- "hash.ID"
+FeatureScatter(pbmcP021P028.singlet, feature1 = "P021", feature2 = "P028")
+```
+# Create the initial scatter plot
+plotP028 <- FeatureScatter(pbmcP021P028.hashtag, feature1 = "P021", feature2 = "P028")
+
+# Zoom in on the plot using coord_cartesian
+library(ggplot2)
+plotP028 + coord_cartesian(xlim = c(0, 1), ylim = c(0, 4))
+
+```{r}
+DefaultAssay(pbmcP021P028.hashtag) <- "HTO"
+pbmc.singlet_P028 <- subset(pbmcP021P028.hashtag, subset = P028 > 0.5 & P021 < 0.5)
+pbmc.singlet_P028$hash.ID <- "P028"
+Idents(pbmc.singlet_P028) <- "hash.ID"
+plotsP028<- FeatureScatter(pbmc.singlet_P028, feature1 = "P021", feature2 = "P028")
+patchwork::wrap_plots(plotsP028) * xlim(c(0, 4)) + ylim(c(0, 4))
+DefaultAssay(pbmc.singlet_P028) <- "RNA"
+```
+# Create the initial scatter plot
+plotP021 <- FeatureScatter(pbmcP021P028.hashtag, feature1 = "P021", feature2 = "P028")
+
+# Zoom in on the plot using coord_cartesian
+library(ggplot2)
+plotP021 + coord_cartesian(xlim = c(0, 4), ylim = c(0, 0.5))
+```{r}
+DefaultAssay(pbmcP021P028.hashtag) <- "HTO"
+pbmc.singlet_P021 <- subset(pbmcP021P028.hashtag, subset = P028 < 0.40 & P021 > 0.5)
+pbmc.singlet_P021$hash.ID <- "P021"
+Idents(pbmc.singlet_P021) <- "hash.ID"
+plotsP021<- FeatureScatter(pbmc.singlet_P021, feature1 = "P021", feature2 = "P028")
+patchwork::wrap_plots(plotsP021) * xlim(c(0, 4)) + ylim(c(0, 4))
+DefaultAssay(pbmc.singlet_P021) <- "RNA"
+```
+
+```{r}
+# Global classification results
+table(pbmc.singlet_P021$HTO_classification.global)
+table(pbmc.singlet_P028$HTO_classification.global)
+```
+
+
+
+```{r}
+pbmc.singlet_P021[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_P021, pattern = "^MT-")
+VlnPlot(pbmc.singlet_P021, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+plot53 <- FeatureScatter(pbmc.singlet_P021, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot54 <- FeatureScatter(pbmc.singlet_P021, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot53 + plot54
+```
+```{r}
+pbmc.singlet_P021 <- subset(pbmc.singlet_P021, subset = nFeature_RNA > 500 & nFeature_RNA < 6000 & percent.mt < 20)
+VlnPlot(pbmc.singlet_P021, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+```
+
+```{r}
+#SCdblfinder
+set.seed(123)
+Idents (pbmc.singlet_P021)
+sce_P021 <- scDblFinder(GetAssayData(pbmc.singlet_P021, slot= "counts"))
+
+#see metadata after doublet identification
+pbmc.singlet_P021$scDblFinder.class <- sce_P021$scDblFinder.class
+View(pbmc.singlet_P021@meta.data)
+#table(pbmc.singlet_P021@meta.data$scDblFinder.class)
+
+Idents(pbmc.singlet_P021) <-pbmc.singlet_P021@meta.data$scDblFinder.class
+Idents(pbmc.singlet_P021)
+
+VlnPlot(pbmc.singlet_P021, features= c("nFeature_RNA", "nCount_RNA"), ncol=2)
+pbmc.singlet_P021 <- subset(pbmc.singlet_P021, idents = "singlet")
+View(pbmc.singlet_P021@meta.data)
+saveRDS(pbmc.singlet_P021, "P021P028/pbmc.singlet_P021.rds")
+```
+
+######PatientP028###################
+
+```{r}
+#QC and filtering
+pbmc.singlet_P028[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_P028, pattern = "^MT-")
+VlnPlot(pbmc.singlet_P028, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+plot55 <- FeatureScatter(pbmc.singlet_P028, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot56 <- FeatureScatter(pbmc.singlet_P028, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot55 + plot56
+```
+
+```{r}
+pbmc.singlet_P028 <- subset(pbmc.singlet_P028, subset = nFeature_RNA > 500 & nFeature_RNA < 6000 & percent.mt < 20)
+VlnPlot(pbmc.singlet_P028, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+```
+
+```{r}
+#Scdblfinder
+Idents (pbmc.singlet_P028)
+sce_P028 <- scDblFinder(GetAssayData(pbmc.singlet_P028, slot= "counts"))
+
+#see metadata after doublet identification
+pbmc.singlet_P028$scDblFinder.class <- sce_P028$scDblFinder.class
+View(pbmc.singlet_P028@meta.data)
+
+table(pbmc.singlet_P028@meta.data$scDblFinder.class)
+#visualize the doublets
+Idents(pbmc.singlet_P028) <-pbmc.singlet_P028@meta.data$scDblFinder.class
+Idents(pbmc.singlet_P028)
+VlnPlot(pbmc.singlet_P028, features= c("nFeature_RNA", "nCount_RNA"), ncol=2)
+pbmc.singlet_P028 <- subset(pbmc.singlet_P028, idents = "singlet")
+View(pbmc.singlet_P028@meta.data)
+saveRDS(pbmc.singlet_P028, "P021P028/pbmc.singlet_P028.rds")
+```
+
+```{r}
+#P024H059
+
+# Load in the UMI matrix
+pbmcP024H059.umis <- P024H059$`Gene Expression`
+  
+# Load in the HTO count matrix
+pbmcP024H059.htos <- P024H059$`Antibody Capture`
+
+# Load in the Protein count matrix
+pbmcP024H059.adt <- P024H059$`Antibody Capture`
+
+# Select cell barcodes detected by both RNA and HTO In the example datasets we have already
+# filtered the cells for you, but perform this step for clarity.
+jointP024H059.bcs <- intersect(colnames(pbmcP024H059.umis), colnames(pbmcP024H059.htos))
+
+# Subset RNA and HTO counts by joint cell barcodes
+pbmcP024H059.umis <- pbmcP024H059.umis[, jointP024H059.bcs]
+pbmcP024H059.htos <- as.matrix(pbmcP024H059.htos[, jointP024H059.bcs])
+
+# Confirm that the HTO have the correct names
+rownames(pbmcP024H059.htos)
+
+# As we only want the b2M hashtags to label the sample well shorten it.
+
+short_htosP024H059 <- pbmcP024H059.htos[28:29,]
+rownames(short_htosP024H059) <- c("P024", "H059")
+rownames(short_htosP024H059)
+```
+
+```{r}
+#### Setup Seurat object and and normalise hashtag data
+# Setup Seurat object
+pbmcP024H059.hashtag <- CreateSeuratObject(counts = pbmcP024H059.umis)
+# Normalize RNA data with log normalization
+pbmcP024H059.hashtag <- NormalizeData(pbmcP024H059.hashtag)
+
+pbmcP024H059.hashtag <- FindVariableFeatures(pbmcP024H059.hashtag, selection.method = "vst", nfeatures = 2000)
+```
+
+#### Normalize HTO and Adding HTO data as an independent assay 
+
+```{r error=TRUE}
+# Add HTO data as a new assay independent from RNA
+pbmcP024H059.hashtag[["HTO"]] <- CreateAssayObject(counts = short_htosP024H059)
+short_adtP024H059 <- pbmcP024H059.htos[1:27,]
+rownames(short_adtP024H059)
+pbmcP024H059.hashtag[["ADT"]] <- CreateAssayObject(counts = short_adtP024H059)
+# Normalize HTO data, here we use centered log-ratio (CLR) transformation
+pbmcP024H059.hashtag <- NormalizeData(pbmcP024H059.hashtag, assay = "HTO", normalization.method = "CLR")
+#No addition of ADT
+#pbmc.hashtag <- NormalizeData(pbmc.hashtag, assay = "ADT", normalization.method = "CLR")
+```
+
+#### Demultiplex cells based on HTO enrichment
+
+```{r}
+pbmcP024H059.hashtag <- HTODemux(pbmcP024H059.hashtag, assay = "HTO", positive.quantile = 0.7, kfunc = "kmeans")
+#### Visualize demultiplexing results
+# Global classification results
+table(pbmcP024H059.hashtag$HTO_classification.global)
+```
+
+```{r error=TRUE}
+#### Visualize enrichment for selected HTOs with ridge plots
+# Group cells based on the max HTO signal
+Idents(pbmcP024H059.hashtag) <- "HTO_maxID"
+RidgePlot(pbmcP024H059.hashtag, assay = "HTO", features = rownames(pbmcP024H059.hashtag[["HTO"]])[1:2], ncol = 2)
+
+```
+
+```{r error=TRUE}
+
+Idents(pbmcP024H059.hashtag) <- "hash.ID"
+FeatureScatter(pbmcP024H059.hashtag, feature1 = "P024", feature2 = "H059")
+
+
+```
+
+```{r}
+DefaultAssay(pbmcP024H059.hashtag) <- "HTO"
+pbmcP024H059.singlet <- subset(pbmcP024H059.hashtag, subset = H059 > 0.7 & P024 < 4)
+Idents(pbmcP024H059.singlet) <- "hash.ID"
+FeatureScatter(pbmcP024H059.singlet, feature1 = "P024", feature2 = "H059")
+```
+# Create the initial scatter plot
+plotH059 <- FeatureScatter(pbmcP024H059.hashtag, feature1 = "P024", feature2 = "H059")
+
+# Zoom in on the plot using coord_cartesian
+library(ggplot2)
+plotH059 + coord_cartesian(xlim = c(0, 1), ylim = c(0, 1))
+
+```{r}
+DefaultAssay(pbmcP024H059.hashtag) <- "HTO"
+pbmc.singlet_H059 <- subset(pbmcP024H059.hashtag, subset = H059 > 0.75 & P024 < 0.5)
+pbmc.singlet_H059$hash.ID <- "H059"
+Idents(pbmc.singlet_H059) <- "hash.ID"
+plotsH059<- FeatureScatter(pbmc.singlet_H059, feature1 = "P024", feature2 = "H059")
+patchwork::wrap_plots(plotsH059) * xlim(c(0, 4)) + ylim(c(0, 4))
+DefaultAssay(pbmc.singlet_H059) <- "RNA"
+```
+# Create the initial scatter plot
+plotP024 <- FeatureScatter(pbmcP024H059.hashtag, feature1 = "P024", feature2 = "H059")
+
+# Zoom in on the plot using coord_cartesian
+library(ggplot2)
+plotP024 + coord_cartesian(xlim = c(0, 4), ylim = c(0, 0.7))
+```{r}
+DefaultAssay(pbmcP024H059.hashtag) <- "HTO"
+pbmc.singlet_P024 <- subset(pbmcP024H059.hashtag, subset = H059 < 0.6 & P024 > 0.6)
+pbmc.singlet_P024$hash.ID <- "P024"
+Idents(pbmc.singlet_P024) <- "hash.ID"
+plotsP024<- FeatureScatter(pbmc.singlet_P024, feature1 = "P024", feature2 = "H059")
+patchwork::wrap_plots(plotsP024) * xlim(c(0, 4)) + ylim(c(0, 4))
+DefaultAssay(pbmc.singlet_P024) <- "RNA"
+```
+
+```{r}
+# Global classification results
+table(pbmc.singlet_P024$HTO_classification.global)
+table(pbmc.singlet_H059$HTO_classification.global)
+```
+
+
+
+```{r}
+pbmc.singlet_P024[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_P024, pattern = "^MT-")
+VlnPlot(pbmc.singlet_P024, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+plot57 <- FeatureScatter(pbmc.singlet_P024, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot58 <- FeatureScatter(pbmc.singlet_P024, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot57 + plot58
+```
+```{r}
+pbmc.singlet_P024 <- subset(pbmc.singlet_P024, subset = nFeature_RNA > 500 & nFeature_RNA < 6000 & percent.mt < 20)
+VlnPlot(pbmc.singlet_P024, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+```
+
+```{r}
+#SCdblfinder
+set.seed(123)
+Idents (pbmc.singlet_P024)
+sce_P024 <- scDblFinder(GetAssayData(pbmc.singlet_P024, slot= "counts"))
+
+#see metadata after doublet identification
+pbmc.singlet_P024$scDblFinder.class <- sce_P024$scDblFinder.class
+View(pbmc.singlet_P024@meta.data)
+#table(pbmc.singlet_P024@meta.data$scDblFinder.class)
+
+Idents(pbmc.singlet_P024) <-pbmc.singlet_P024@meta.data$scDblFinder.class
+Idents(pbmc.singlet_P024)
+
+VlnPlot(pbmc.singlet_P024, features= c("nFeature_RNA", "nCount_RNA"), ncol=2)
+pbmc.singlet_P024 <- subset(pbmc.singlet_P024, idents = "singlet")
+View(pbmc.singlet_P024@meta.data)
+saveRDS(pbmc.singlet_P024, "P024H059/pbmc.singlet_P024.rds")
+```
+
+######PatientH059###################
+
+```{r}
+#QC and filtering
+pbmc.singlet_H059[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_H059, pattern = "^MT-")
+VlnPlot(pbmc.singlet_H059, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+plot59 <- FeatureScatter(pbmc.singlet_H059, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot60 <- FeatureScatter(pbmc.singlet_H059, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot59 + plot60
+```
+
+```{r}
+pbmc.singlet_H059 <- subset(pbmc.singlet_H059, subset = nFeature_RNA > 500 & nFeature_RNA < 5000 & percent.mt < 20)
+VlnPlot(pbmc.singlet_H059, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+```
+
+```{r}
+#Scdblfinder
+Idents (pbmc.singlet_H059)
+sce_H059 <- scDblFinder(GetAssayData(pbmc.singlet_H059, slot= "counts"))
+
+#see metadata after doublet identification
+pbmc.singlet_H059$scDblFinder.class <- sce_H059$scDblFinder.class
+View(pbmc.singlet_H059@meta.data)
+
+table(pbmc.singlet_H059@meta.data$scDblFinder.class)
+#visualize the doublets
+Idents(pbmc.singlet_H059) <-pbmc.singlet_H059@meta.data$scDblFinder.class
+Idents(pbmc.singlet_H059)
+VlnPlot(pbmc.singlet_H059, features= c("nFeature_RNA", "nCount_RNA"), ncol=2)
+pbmc.singlet_H059 <- subset(pbmc.singlet_H059, idents = "singlet")
+View(pbmc.singlet_H059@meta.data)
+saveRDS(pbmc.singlet_H059, "P024H059/pbmc.singlet_H059.rds")
+```
+
+```{r}
+#P025P037
+
+# Load in the UMI matrix
+pbmcP025P037.umis <- P025P037$`Gene Expression`
+  
+# Load in the HTO count matrix
+pbmcP025P037.htos <- P025P037$`Antibody Capture`
+
+# Load in the Protein count matrix
+pbmcP025P037.adt <- P025P037$`Antibody Capture`
+
+# Select cell barcodes detected by both RNA and HTO In the example datasets we have already
+# filtered the cells for you, but perform this step for clarity.
+jointP025P037.bcs <- intersect(colnames(pbmcP025P037.umis), colnames(pbmcP025P037.htos))
+
+# Subset RNA and HTO counts by joint cell barcodes
+pbmcP025P037.umis <- pbmcP025P037.umis[, jointP025P037.bcs]
+pbmcP025P037.htos <- as.matrix(pbmcP025P037.htos[, jointP025P037.bcs])
+
+# Confirm that the HTO have the correct names
+rownames(pbmcP025P037.htos)
+
+# As we only want the b2M hashtags to label the sample well shorten it.
+
+short_htosP025P037 <- pbmcP025P037.htos[28:29,]
+rownames(short_htosP025P037) <- c("P025", "P037")
+rownames(short_htosP025P037)
+```
+
+```{r}
+#### Setup Seurat object and and normalise hashtag data
+# Setup Seurat object
+pbmcP025P037.hashtag <- CreateSeuratObject(counts = pbmcP025P037.umis)
+# Normalize RNA data with log normalization
+pbmcP025P037.hashtag <- NormalizeData(pbmcP025P037.hashtag)
+
+pbmcP025P037.hashtag <- FindVariableFeatures(pbmcP025P037.hashtag, selection.method = "vst", nfeatures = 2000)
+```
+
+#### Normalize HTO and Adding HTO data as an independent assay 
+
+```{r error=TRUE}
+# Add HTO data as a new assay independent from RNA
+pbmcP025P037.hashtag[["HTO"]] <- CreateAssayObject(counts = short_htosP025P037)
+short_adtP025P037 <- pbmcP025P037.htos[1:27,]
+rownames(short_adtP025P037)
+pbmcP025P037.hashtag[["ADT"]] <- CreateAssayObject(counts = short_adtP025P037)
+# Normalize HTO data, here we use centered log-ratio (CLR) transformation
+pbmcP025P037.hashtag <- NormalizeData(pbmcP025P037.hashtag, assay = "HTO", normalization.method = "CLR")
+#No addition of ADT
+#pbmc.hashtag <- NormalizeData(pbmc.hashtag, assay = "ADT", normalization.method = "CLR")
+```
+
+#### Demultiplex cells based on HTO enrichment
+
+```{r}
+pbmcP025P037.hashtag <- HTODemux(pbmcP025P037.hashtag, assay = "HTO", positive.quantile = 0.7, kfunc = "kmeans")
+#### Visualize demultiplexing results
+# Global classification results
+table(pbmcP025P037.hashtag$HTO_classification.global)
+```
+
+```{r error=TRUE}
+#### Visualize enrichment for selected HTOs with ridge plots
+# Group cells based on the max HTO signal
+Idents(pbmcP025P037.hashtag) <- "HTO_maxID"
+RidgePlot(pbmcP025P037.hashtag, assay = "HTO", features = rownames(pbmcP025P037.hashtag[["HTO"]])[1:2], ncol = 2)
+
+```
+
+```{r error=TRUE}
+
+Idents(pbmcP025P037.hashtag) <- "hash.ID"
+FeatureScatter(pbmcP025P037.hashtag, feature1 = "P025", feature2 = "P037")
+
+
+```
+
+```{r}
+DefaultAssay(pbmcP025P037.hashtag) <- "HTO"
+pbmcP025P037.singlet <- subset(pbmcP025P037.hashtag, subset = P037 > 0.5 & P025 < 4)
+Idents(pbmcP025P037.singlet) <- "hash.ID"
+FeatureScatter(pbmcP025P037.singlet, feature1 = "P025", feature2 = "P037")
+```
+# Create the initial scatter plot
+plotP037 <- FeatureScatter(pbmcP025P037.hashtag, feature1 = "P025", feature2 = "P037")
+
+# Zoom in on the plot using coord_cartesian
+library(ggplot2)
+plotP037 + coord_cartesian(xlim = c(0, 1), ylim = c(0, 4))
+
+```{r}
+DefaultAssay(pbmcP025P037.hashtag) <- "HTO"
+pbmc.singlet_P037 <- subset(pbmcP025P037.hashtag, subset = P037 > 0.5 & P025 < 0.25)
+pbmc.singlet_P037$hash.ID <- "P037"
+Idents(pbmc.singlet_P037) <- "hash.ID"
+plotsP037<- FeatureScatter(pbmc.singlet_P037, feature1 = "P025", feature2 = "P037")
+patchwork::wrap_plots(plotsP037) * xlim(c(0, 4)) + ylim(c(0, 4))
+DefaultAssay(pbmc.singlet_P037) <- "RNA"
+```
+# Create the initial scatter plot
+plotP025 <- FeatureScatter(pbmcP025P037.hashtag, feature1 = "P025", feature2 = "P037")
+
+# Zoom in on the plot using coord_cartesian
+library(ggplot2)
+plotP025 + coord_cartesian(xlim = c(0, 4), ylim = c(0, 1))
+```{r}
+DefaultAssay(pbmcP025P037.hashtag) <- "HTO"
+pbmc.singlet_P025 <- subset(pbmcP025P037.hashtag, subset = P037 < 0.25 & P025 > 0.5)
+pbmc.singlet_P025$hash.ID <- "P025"
+Idents(pbmc.singlet_P025) <- "hash.ID"
+plotsP025<- FeatureScatter(pbmc.singlet_P025, feature1 = "P025", feature2 = "P037")
+patchwork::wrap_plots(plotsP025) * xlim(c(0, 4)) + ylim(c(0, 4))
+DefaultAssay(pbmc.singlet_P025) <- "RNA"
+```
+
+```{r}
+# Global classification results
+table(pbmc.singlet_P025$HTO_classification.global)
+table(pbmc.singlet_P037$HTO_classification.global)
+```
+
+
+
+```{r}
+pbmc.singlet_P025[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_P025, pattern = "^MT-")
+VlnPlot(pbmc.singlet_P025, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+plot61 <- FeatureScatter(pbmc.singlet_P025, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot62 <- FeatureScatter(pbmc.singlet_P025, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot61 + plot62
+```
+```{r}
+pbmc.singlet_P025 <- subset(pbmc.singlet_P025, subset = nFeature_RNA > 500 & nFeature_RNA < 5000 & percent.mt < 20)
+VlnPlot(pbmc.singlet_P025, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+```
+
+```{r}
+#SCdblfinder
+set.seed(123)
+Idents (pbmc.singlet_P025)
+sce_P025 <- scDblFinder(GetAssayData(pbmc.singlet_P025, slot= "counts"))
+
+#see metadata after doublet identification
+pbmc.singlet_P025$scDblFinder.class <- sce_P025$scDblFinder.class
+View(pbmc.singlet_P025@meta.data)
+#table(pbmc.singlet_P025@meta.data$scDblFinder.class)
+
+Idents(pbmc.singlet_P025) <-pbmc.singlet_P025@meta.data$scDblFinder.class
+Idents(pbmc.singlet_P025)
+
+VlnPlot(pbmc.singlet_P025, features= c("nFeature_RNA", "nCount_RNA"), ncol=2)
+pbmc.singlet_P025 <- subset(pbmc.singlet_P025, idents = "singlet")
+View(pbmc.singlet_P025@meta.data)
+saveRDS(pbmc.singlet_P025, "P025P037/pbmc.singlet_P025.rds")
+```
+
+######PatientP037###################
+
+```{r}
+#QC and filtering
+pbmc.singlet_P037[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_P037, pattern = "^MT-")
+VlnPlot(pbmc.singlet_P037, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+plot63 <- FeatureScatter(pbmc.singlet_P037, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot64 <- FeatureScatter(pbmc.singlet_P037, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot63 + plot64
+```
+
+```{r}
+pbmc.singlet_P037 <- subset(pbmc.singlet_P037, subset = nFeature_RNA > 500 & nFeature_RNA < 5000 & percent.mt < 20)
+VlnPlot(pbmc.singlet_P037, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+```
+
+```{r}
+#Scdblfinder
+Idents (pbmc.singlet_P037)
+sce_P037 <- scDblFinder(GetAssayData(pbmc.singlet_P037, slot= "counts"))
+
+#see metadata after doublet identification
+pbmc.singlet_P037$scDblFinder.class <- sce_P037$scDblFinder.class
+View(pbmc.singlet_P037@meta.data)
+
+table(pbmc.singlet_P037@meta.data$scDblFinder.class)
+#visualize the doublets
+Idents(pbmc.singlet_P037) <-pbmc.singlet_P037@meta.data$scDblFinder.class
+Idents(pbmc.singlet_P037)
+VlnPlot(pbmc.singlet_P037, features= c("nFeature_RNA", "nCount_RNA"), ncol=2)
+pbmc.singlet_P037 <- subset(pbmc.singlet_P037, idents = "singlet")
+View(pbmc.singlet_P037@meta.data)
+saveRDS(pbmc.singlet_P037, "P025P037/pbmc.singlet_P037.rds")
+```
+
+```{r}
+#P029P006
+
+# Load in the UMI matrix
+pbmcP029P006.umis <- P029P006$`Gene Expression`
+  
+# Load in the HTO count matrix
+pbmcP029P006.htos <- P029P006$`Antibody Capture`
+
+# Load in the Protein count matrix
+pbmcP029P006.adt <- P029P006$`Antibody Capture`
+
+# Select cell barcodes detected by both RNA and HTO In the example datasets we have already
+# filtered the cells for you, but perform this step for clarity.
+jointP029P006.bcs <- intersect(colnames(pbmcP029P006.umis), colnames(pbmcP029P006.htos))
+
+# Subset RNA and HTO counts by joint cell barcodes
+pbmcP029P006.umis <- pbmcP029P006.umis[, jointP029P006.bcs]
+pbmcP029P006.htos <- as.matrix(pbmcP029P006.htos[, jointP029P006.bcs])
+
+# Confirm that the HTO have the correct names
+rownames(pbmcP029P006.htos)
+
+# As we only want the b2M hashtags to label the sample well shorten it.
+
+short_htosP029P006 <- pbmcP029P006.htos[28:29,]
+rownames(short_htosP029P006) <- c("P029", "P006")
+rownames(short_htosP029P006)
+```
+
+```{r}
+#### Setup Seurat object and and normalise hashtag data
+# Setup Seurat object
+pbmcP029P006.hashtag <- CreateSeuratObject(counts = pbmcP029P006.umis)
+# Normalize RNA data with log normalization
+pbmcP029P006.hashtag <- NormalizeData(pbmcP029P006.hashtag)
+
+pbmcP029P006.hashtag <- FindVariableFeatures(pbmcP029P006.hashtag, selection.method = "vst", nfeatures = 2000)
+```
+
+#### Normalize HTO and Adding HTO data as an independent assay 
+
+```{r error=TRUE}
+# Add HTO data as a new assay independent from RNA
+pbmcP029P006.hashtag[["HTO"]] <- CreateAssayObject(counts = short_htosP029P006)
+short_adtP029P006 <- pbmcP029P006.htos[1:27,]
+rownames(short_adtP029P006)
+pbmcP029P006.hashtag[["ADT"]] <- CreateAssayObject(counts = short_adtP029P006)
+# Normalize HTO data, here we use centered log-ratio (CLR) transformation
+pbmcP029P006.hashtag <- NormalizeData(pbmcP029P006.hashtag, assay = "HTO", normalization.method = "CLR")
+#No addition of ADT
+#pbmc.hashtag <- NormalizeData(pbmc.hashtag, assay = "ADT", normalization.method = "CLR")
+```
+
+#### Demultiplex cells based on HTO enrichment
+
+```{r}
+pbmcP029P006.hashtag <- HTODemux(pbmcP029P006.hashtag, assay = "HTO", positive.quantile = 0.7, kfunc = "kmeans")
+#### Visualize demultiplexing results
+# Global classification results
+table(pbmcP029P006.hashtag$HTO_classification.global)
+```
+
+```{r error=TRUE}
+#### Visualize enrichment for selected HTOs with ridge plots
+# Group cells based on the max HTO signal
+Idents(pbmcP029P006.hashtag) <- "HTO_maxID"
+RidgePlot(pbmcP029P006.hashtag, assay = "HTO", features = rownames(pbmcP029P006.hashtag[["HTO"]])[1:2], ncol = 2)
+
+```
+
+```{r error=TRUE}
+
+Idents(pbmcP029P006.hashtag) <- "hash.ID"
+FeatureScatter(pbmcP029P006.hashtag, feature1 = "P029", feature2 = "P006")
+
+
+```
+
+```{r}
+DefaultAssay(pbmcP029P006.hashtag) <- "HTO"
+pbmcP029P006.singlet <- subset(pbmcP029P006.hashtag, subset = P006 > 0.5 & P029 < 4)
+Idents(pbmcP029P006.singlet) <- "hash.ID"
+FeatureScatter(pbmcP029P006.singlet, feature1 = "P029", feature2 = "P006")
+```
+# Create the initial scatter plot
+plotP006 <- FeatureScatter(pbmcP029P006.hashtag, feature1 = "P029", feature2 = "P006")
+
+# Zoom in on the plot using coord_cartesian
+library(ggplot2)
+plotP006 + coord_cartesian(xlim = c(0, 1), ylim = c(0, 4))
+
+```{r}
+DefaultAssay(pbmcP029P006.hashtag) <- "HTO"
+pbmc.singlet_P006 <- subset(pbmcP029P006.hashtag, subset = P006 > 0.5 & P029 < 0.5)
+pbmc.singlet_P006$hash.ID <- "P006"
+Idents(pbmc.singlet_P006) <- "hash.ID"
+plotsP006<- FeatureScatter(pbmc.singlet_P006, feature1 = "P029", feature2 = "P006")
+patchwork::wrap_plots(plotsP006) * xlim(c(0, 4)) + ylim(c(0, 4))
+DefaultAssay(pbmc.singlet_P006) <- "RNA"
+```
+# Create the initial scatter plot
+plotP029 <- FeatureScatter(pbmcP029P006.hashtag, feature1 = "P029", feature2 = "P006")
+
+# Zoom in on the plot using coord_cartesian
+library(ggplot2)
+plotP029 + coord_cartesian(xlim = c(0, 4), ylim = c(0, 1))
+```{r}
+DefaultAssay(pbmcP029P006.hashtag) <- "HTO"
+pbmc.singlet_P029 <- subset(pbmcP029P006.hashtag, subset = P006 < 0.4 & P029 > 0.5)
+pbmc.singlet_P029$hash.ID <- "P029"
+Idents(pbmc.singlet_P029) <- "hash.ID"
+plotsP029<- FeatureScatter(pbmc.singlet_P029, feature1 = "P029", feature2 = "P006")
+patchwork::wrap_plots(plotsP029) * xlim(c(0, 4)) + ylim(c(0, 4))
+DefaultAssay(pbmc.singlet_P029) <- "RNA"
+```
+
+```{r}
+# Global classification results
+table(pbmc.singlet_P029$HTO_classification.global)
+table(pbmc.singlet_P006$HTO_classification.global)
+```
+
+
+
+```{r}
+pbmc.singlet_P029[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_P029, pattern = "^MT-")
+VlnPlot(pbmc.singlet_P029, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+plot65 <- FeatureScatter(pbmc.singlet_P029, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot66 <- FeatureScatter(pbmc.singlet_P029, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot65 + plot66
+```
+```{r}
+pbmc.singlet_P029 <- subset(pbmc.singlet_P029, subset = nFeature_RNA > 500 & nFeature_RNA < 5000 & percent.mt < 20)
+VlnPlot(pbmc.singlet_P029, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+```
+
+```{r}
+#SCdblfinder
+set.seed(123)
+Idents (pbmc.singlet_P029)
+sce_P029 <- scDblFinder(GetAssayData(pbmc.singlet_P029, slot= "counts"))
+
+#see metadata after doublet identification
+pbmc.singlet_P029$scDblFinder.class <- sce_P029$scDblFinder.class
+View(pbmc.singlet_P029@meta.data)
+#table(pbmc.singlet_P029@meta.data$scDblFinder.class)
+
+Idents(pbmc.singlet_P029) <-pbmc.singlet_P029@meta.data$scDblFinder.class
+Idents(pbmc.singlet_P029)
+
+VlnPlot(pbmc.singlet_P029, features= c("nFeature_RNA", "nCount_RNA"), ncol=2)
+pbmc.singlet_P029 <- subset(pbmc.singlet_P029, idents = "singlet")
+View(pbmc.singlet_P029@meta.data)
+saveRDS(pbmc.singlet_P029, "P029P006/pbmc.singlet_P029.rds")
+```
+
+######PatientP006###################
+
+```{r}
+#QC and filtering
+pbmc.singlet_P006[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_P006, pattern = "^MT-")
+VlnPlot(pbmc.singlet_P006, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+plot67 <- FeatureScatter(pbmc.singlet_P006, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot68 <- FeatureScatter(pbmc.singlet_P006, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot67 + plot68
+```
+
+```{r}
+pbmc.singlet_P006 <- subset(pbmc.singlet_P006, subset = nFeature_RNA > 500 & nFeature_RNA < 5000 & percent.mt < 20)
+VlnPlot(pbmc.singlet_P006, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+```
+
+```{r}
+#Scdblfinder
+Idents (pbmc.singlet_P006)
+sce_P006 <- scDblFinder(GetAssayData(pbmc.singlet_P006, slot= "counts"))
+
+#see metadata after doublet identification
+pbmc.singlet_P006$scDblFinder.class <- sce_P006$scDblFinder.class
+View(pbmc.singlet_P006@meta.data)
+
+table(pbmc.singlet_P006@meta.data$scDblFinder.class)
+#visualize the doublets
+Idents(pbmc.singlet_P006) <-pbmc.singlet_P006@meta.data$scDblFinder.class
+Idents(pbmc.singlet_P006)
+VlnPlot(pbmc.singlet_P006, features= c("nFeature_RNA", "nCount_RNA"), ncol=2)
+pbmc.singlet_P006 <- subset(pbmc.singlet_P006, idents = "singlet")
+View(pbmc.singlet_P006@meta.data)
+saveRDS(pbmc.singlet_P006, "P029P006/pbmc.singlet_P006.rds")
+```
+
+```{r}
+#P032P035
+
+# Load in the UMI matrix
+pbmcP032P035.umis <- P032P035$`Gene Expression`
+  
+# Load in the HTO count matrix
+pbmcP032P035.htos <- P032P035$`Antibody Capture`
+
+# Load in the Protein count matrix
+pbmcP032P035.adt <- P032P035$`Antibody Capture`
+
+# Select cell barcodes detected by both RNA and HTO In the example datasets we have already
+# filtered the cells for you, but perform this step for clarity.
+jointP032P035.bcs <- intersect(colnames(pbmcP032P035.umis), colnames(pbmcP032P035.htos))
+
+# Subset RNA and HTO counts by joint cell barcodes
+pbmcP032P035.umis <- pbmcP032P035.umis[, jointP032P035.bcs]
+pbmcP032P035.htos <- as.matrix(pbmcP032P035.htos[, jointP032P035.bcs])
+
+# Confirm that the HTO have the correct names
+rownames(pbmcP032P035.htos)
+
+# As we only want the b2M hashtags to label the sample well shorten it.
+
+short_htosP032P035 <- pbmcP032P035.htos[28:29,]
+rownames(short_htosP032P035) <- c("P032", "P035")
+rownames(short_htosP032P035)
+```
+
+```{r}
+#### Setup Seurat object and and normalise hashtag data
+# Setup Seurat object
+pbmcP032P035.hashtag <- CreateSeuratObject(counts = pbmcP032P035.umis)
+# Normalize RNA data with log normalization
+pbmcP032P035.hashtag <- NormalizeData(pbmcP032P035.hashtag)
+
+pbmcP032P035.hashtag <- FindVariableFeatures(pbmcP032P035.hashtag, selection.method = "vst", nfeatures = 2000)
+```
+
+#### Normalize HTO and Adding HTO data as an independent assay 
+
+```{r error=TRUE}
+# Add HTO data as a new assay independent from RNA
+pbmcP032P035.hashtag[["HTO"]] <- CreateAssayObject(counts = short_htosP032P035)
+short_adtP032P035 <- pbmcP032P035.htos[1:27,]
+rownames(short_adtP032P035)
+pbmcP032P035.hashtag[["ADT"]] <- CreateAssayObject(counts = short_adtP032P035)
+# Normalize HTO data, here we use centered log-ratio (CLR) transformation
+pbmcP032P035.hashtag <- NormalizeData(pbmcP032P035.hashtag, assay = "HTO", normalization.method = "CLR")
+#No addition of ADT
+#pbmc.hashtag <- NormalizeData(pbmc.hashtag, assay = "ADT", normalization.method = "CLR")
+```
+
+#### Demultiplex cells based on HTO enrichment
+
+```{r}
+pbmcP032P035.hashtag <- HTODemux(pbmcP032P035.hashtag, assay = "HTO", positive.quantile = 0.7, kfunc = "kmeans")
+#### Visualize demultiplexing results
+# Global classification results
+table(pbmcP032P035.hashtag$HTO_classification.global)
+```
+
+```{r error=TRUE}
+#### Visualize enrichment for selected HTOs with ridge plots
+# Group cells based on the max HTO signal
+Idents(pbmcP032P035.hashtag) <- "HTO_maxID"
+RidgePlot(pbmcP032P035.hashtag, assay = "HTO", features = rownames(pbmcP032P035.hashtag[["HTO"]])[1:2], ncol = 2)
+
+```
+
+```{r error=TRUE}
+
+Idents(pbmcP032P035.hashtag) <- "hash.ID"
+FeatureScatter(pbmcP032P035.hashtag, feature1 = "P032", feature2 = "P035")
+
+
+```
+
+```{r}
+DefaultAssay(pbmcP032P035.hashtag) <- "HTO"
+pbmcP032P035.singlet <- subset(pbmcP032P035.hashtag, subset = P035 > 0.5 & P032 < 4)
+Idents(pbmcP032P035.singlet) <- "hash.ID"
+FeatureScatter(pbmcP032P035.singlet, feature1 = "P032", feature2 = "P035")
+```
+# Create the initial scatter plot
+plotP035 <- FeatureScatter(pbmcP032P035.hashtag, feature1 = "P032", feature2 = "P035")
+
+# Zoom in on the plot using coord_cartesian
+library(ggplot2)
+plotP035 + coord_cartesian(xlim = c(0, 1), ylim = c(0, 4))
+
+```{r}
+DefaultAssay(pbmcP032P035.hashtag) <- "HTO"
+pbmc.singlet_P035 <- subset(pbmcP032P035.hashtag, subset = P035 > 0.9 & P032 < 0.85)
+pbmc.singlet_P035$hash.ID <- "P035"
+Idents(pbmc.singlet_P035) <- "hash.ID"
+plotsP035<- FeatureScatter(pbmc.singlet_P035, feature1 = "P032", feature2 = "P035")
+patchwork::wrap_plots(plotsP035) * xlim(c(0, 4)) + ylim(c(0, 4))
+DefaultAssay(pbmc.singlet_P035) <- "RNA"
+```
+# Create the initial scatter plot
+plotP032 <- FeatureScatter(pbmcP032P035.hashtag, feature1 = "P032", feature2 = "P035")
+
+# Zoom in on the plot using coord_cartesian
+library(ggplot2)
+plotP032 + coord_cartesian(xlim = c(0, 4), ylim = c(0, 1))
+```{r}
+DefaultAssay(pbmcP032P035.hashtag) <- "HTO"
+pbmc.singlet_P032 <- subset(pbmcP032P035.hashtag, subset = P035 < 0.25 & P032 > 0.5)
+pbmc.singlet_P032$hash.ID <- "P032"
+Idents(pbmc.singlet_P032) <- "hash.ID"
+plotsP032<- FeatureScatter(pbmc.singlet_P032, feature1 = "P032", feature2 = "P035")
+patchwork::wrap_plots(plotsP032) * xlim(c(0, 4)) + ylim(c(0, 4))
+DefaultAssay(pbmc.singlet_P032) <- "RNA"
+```
+
+```{r}
+# Global classification results
+table(pbmc.singlet_P032$HTO_classification.global)
+table(pbmc.singlet_P035$HTO_classification.global)
+```
+
+
+
+```{r}
+pbmc.singlet_P032[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_P032, pattern = "^MT-")
+VlnPlot(pbmc.singlet_P032, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+plot69 <- FeatureScatter(pbmc.singlet_P032, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot70 <- FeatureScatter(pbmc.singlet_P032, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot69 + plot70
+```
+```{r}
+pbmc.singlet_P032 <- subset(pbmc.singlet_P032, subset = nFeature_RNA > 500 & nFeature_RNA < 5000 & percent.mt < 20)
+VlnPlot(pbmc.singlet_P032, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+```
+
+```{r}
+#SCdblfinder
+set.seed(123)
+Idents (pbmc.singlet_P032)
+sce_P032 <- scDblFinder(GetAssayData(pbmc.singlet_P032, slot= "counts"))
+
+#see metadata after doublet identification
+pbmc.singlet_P032$scDblFinder.class <- sce_P032$scDblFinder.class
+View(pbmc.singlet_P032@meta.data)
+#table(pbmc.singlet_P032@meta.data$scDblFinder.class)
+
+Idents(pbmc.singlet_P032) <-pbmc.singlet_P032@meta.data$scDblFinder.class
+Idents(pbmc.singlet_P032)
+
+VlnPlot(pbmc.singlet_P032, features= c("nFeature_RNA", "nCount_RNA"), ncol=2)
+pbmc.singlet_P032 <- subset(pbmc.singlet_P032, idents = "singlet")
+View(pbmc.singlet_P032@meta.data)
+saveRDS(pbmc.singlet_P032, "P032P035/pbmc.singlet_P032.rds")
+```
+
+######PatientP035###################
+
+```{r}
+#QC and filtering
+pbmc.singlet_P035[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_P035, pattern = "^MT-")
+VlnPlot(pbmc.singlet_P035, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+plot71 <- FeatureScatter(pbmc.singlet_P035, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot72 <- FeatureScatter(pbmc.singlet_P035, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot71 + plot72
+```
+
+```{r}
+pbmc.singlet_P035 <- subset(pbmc.singlet_P035, subset = nFeature_RNA > 500 & nFeature_RNA < 5000 & percent.mt < 20)
+VlnPlot(pbmc.singlet_P035, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+```
+
+```{r}
+#Scdblfinder
+Idents (pbmc.singlet_P035)
+sce_P035 <- scDblFinder(GetAssayData(pbmc.singlet_P035, slot= "counts"))
+
+#see metadata after doublet identification
+pbmc.singlet_P035$scDblFinder.class <- sce_P035$scDblFinder.class
+View(pbmc.singlet_P035@meta.data)
+
+table(pbmc.singlet_P035@meta.data$scDblFinder.class)
+#visualize the doublets
+Idents(pbmc.singlet_P035) <-pbmc.singlet_P035@meta.data$scDblFinder.class
+Idents(pbmc.singlet_P035)
+VlnPlot(pbmc.singlet_P035, features= c("nFeature_RNA", "nCount_RNA"), ncol=2)
+pbmc.singlet_P035 <- subset(pbmc.singlet_P035, idents = "singlet")
+View(pbmc.singlet_P035@meta.data)
+saveRDS(pbmc.singlet_P035, "P032P035/pbmc.singlet_P035.rds")
+```
+
+```{r}
+#P040P041
+
+# Load in the UMI matrix
+pbmcP040P041.umis <- P040P041$`Gene Expression`
+  
+# Load in the HTO count matrix
+pbmcP040P041.htos <- P040P041$`Antibody Capture`
+
+# Load in the Protein count matrix
+pbmcP040P041.adt <- P040P041$`Antibody Capture`
+
+# Select cell barcodes detected by both RNA and HTO In the example datasets we have already
+# filtered the cells for you, but perform this step for clarity.
+jointP040P041.bcs <- intersect(colnames(pbmcP040P041.umis), colnames(pbmcP040P041.htos))
+
+# Subset RNA and HTO counts by joint cell barcodes
+pbmcP040P041.umis <- pbmcP040P041.umis[, jointP040P041.bcs]
+pbmcP040P041.htos <- as.matrix(pbmcP040P041.htos[, jointP040P041.bcs])
+
+# Confirm that the HTO have the correct names
+rownames(pbmcP040P041.htos)
+
+# As we only want the b2M hashtags to label the sample well shorten it.
+
+short_htosP040P041 <- pbmcP040P041.htos[28:29,]
+rownames(short_htosP040P041) <- c("P040", "P041")
+rownames(short_htosP040P041)
+```
+
+```{r}
+#### Setup Seurat object and and normalise hashtag data
+# Setup Seurat object
+pbmcP040P041.hashtag <- CreateSeuratObject(counts = pbmcP040P041.umis)
+# Normalize RNA data with log normalization
+pbmcP040P041.hashtag <- NormalizeData(pbmcP040P041.hashtag)
+
+pbmcP040P041.hashtag <- FindVariableFeatures(pbmcP040P041.hashtag, selection.method = "vst", nfeatures = 2000)
+```
+
+#### Normalize HTO and Adding HTO data as an independent assay 
+
+```{r error=TRUE}
+# Add HTO data as a new assay independent from RNA
+pbmcP040P041.hashtag[["HTO"]] <- CreateAssayObject(counts = short_htosP040P041)
+short_adtP040P041 <- pbmcP040P041.htos[1:27,]
+rownames(short_adtP040P041)
+pbmcP040P041.hashtag[["ADT"]] <- CreateAssayObject(counts = short_adtP040P041)
+# Normalize HTO data, here we use centered log-ratio (CLR) transformation
+pbmcP040P041.hashtag <- NormalizeData(pbmcP040P041.hashtag, assay = "HTO", normalization.method = "CLR")
+#No addition of ADT
+#pbmc.hashtag <- NormalizeData(pbmc.hashtag, assay = "ADT", normalization.method = "CLR")
+```
+
+#### Demultiplex cells based on HTO enrichment
+
+```{r}
+pbmcP040P041.hashtag <- HTODemux(pbmcP040P041.hashtag, assay = "HTO", positive.quantile = 0.7, kfunc = "kmeans")
+#### Visualize demultiplexing results
+# Global classification results
+table(pbmcP040P041.hashtag$HTO_classification.global)
+```
+
+```{r error=TRUE}
+#### Visualize enrichment for selected HTOs with ridge plots
+# Group cells based on the max HTO signal
+Idents(pbmcP040P041.hashtag) <- "HTO_maxID"
+RidgePlot(pbmcP040P041.hashtag, assay = "HTO", features = rownames(pbmcP040P041.hashtag[["HTO"]])[1:2], ncol = 2)
+
+```
+
+```{r error=TRUE}
+
+Idents(pbmcP040P041.hashtag) <- "hash.ID"
+FeatureScatter(pbmcP040P041.hashtag, feature1 = "P040", feature2 = "P041")
+
+
+```
+
+```{r}
+DefaultAssay(pbmcP040P041.hashtag) <- "HTO"
+pbmcP040P041.singlet <- subset(pbmcP040P041.hashtag, subset = P041 > 0.5 & P040 < 4)
+Idents(pbmcP040P041.singlet) <- "hash.ID"
+FeatureScatter(pbmcP040P041.singlet, feature1 = "P040", feature2 = "P041")
+```
+# Create the initial scatter plot
+plotP041 <- FeatureScatter(pbmcP040P041.hashtag, feature1 = "P040", feature2 = "P041")
+
+# Zoom in on the plot using coord_cartesian
+library(ggplot2)
+plotP041 + coord_cartesian(xlim = c(0, 1), ylim = c(0, 4))
+
+```{r}
+DefaultAssay(pbmcP040P041.hashtag) <- "HTO"
+pbmc.singlet_P041 <- subset(pbmcP040P041.hashtag, subset = P041 > 0.7 & P040 < 0.5)
+pbmc.singlet_P041$hash.ID <- "P041"
+Idents(pbmc.singlet_P041) <- "hash.ID"
+plotsP041<- FeatureScatter(pbmc.singlet_P041, feature1 = "P040", feature2 = "P041")
+patchwork::wrap_plots(plotsP041) * xlim(c(0, 4)) + ylim(c(0, 4))
+DefaultAssay(pbmc.singlet_P041) <- "RNA"
+```
+# Create the initial scatter plot
+plotP040 <- FeatureScatter(pbmcP040P041.hashtag, feature1 = "P040", feature2 = "P041")
+
+# Zoom in on the plot using coord_cartesian
+library(ggplot2)
+plotP040 + coord_cartesian(xlim = c(0, 4), ylim = c(0, 1))
+```{r}
+DefaultAssay(pbmcP040P041.hashtag) <- "HTO"
+pbmc.singlet_P040 <- subset(pbmcP040P041.hashtag, subset = P041 < 0.5 & P040 > 0.7)
+pbmc.singlet_P040$hash.ID <- "P040"
+Idents(pbmc.singlet_P040) <- "hash.ID"
+plotsP040<- FeatureScatter(pbmc.singlet_P040, feature1 = "P040", feature2 = "P041")
+patchwork::wrap_plots(plotsP040) * xlim(c(0, 4)) + ylim(c(0, 4))
+DefaultAssay(pbmc.singlet_P040) <- "RNA"
+```
+
+```{r}
+# Global classification results
+table(pbmc.singlet_P040$HTO_classification.global)
+table(pbmc.singlet_P041$HTO_classification.global)
+```
+
+
+```{r}
+pbmc.singlet_P040[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_P040, pattern = "^MT-")
+VlnPlot(pbmc.singlet_P040, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+plot73 <- FeatureScatter(pbmc.singlet_P040, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot74 <- FeatureScatter(pbmc.singlet_P040, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot73 + plot74
+```
+```{r}
+pbmc.singlet_P040 <- subset(pbmc.singlet_P040, subset = nFeature_RNA > 500 & nFeature_RNA < 6000 & percent.mt < 15)
+VlnPlot(pbmc.singlet_P040, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+```
+
+```{r}
+#SCdblfinder
+set.seed(123)
+Idents (pbmc.singlet_P040)
+sce_P040 <- scDblFinder(GetAssayData(pbmc.singlet_P040, slot= "counts"))
+
+#see metadata after doublet identification
+pbmc.singlet_P040$scDblFinder.class <- sce_P040$scDblFinder.class
+View(pbmc.singlet_P040@meta.data)
+#table(pbmc.singlet_P040@meta.data$scDblFinder.class)
+
+Idents(pbmc.singlet_P040) <-pbmc.singlet_P040@meta.data$scDblFinder.class
+Idents(pbmc.singlet_P040)
+
+VlnPlot(pbmc.singlet_P040, features= c("nFeature_RNA", "nCount_RNA"), ncol=2)
+pbmc.singlet_P040 <- subset(pbmc.singlet_P040, idents = "singlet")
+View(pbmc.singlet_P040@meta.data)
+saveRDS(pbmc.singlet_P040, "P040P041/pbmc.singlet_P040.rds")
+```
+
+######PatientP041###################
+
+```{r}
+#QC and filtering
+pbmc.singlet_P041[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_P041, pattern = "^MT-")
+VlnPlot(pbmc.singlet_P041, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+plot75 <- FeatureScatter(pbmc.singlet_P041, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot76 <- FeatureScatter(pbmc.singlet_P041, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot75 + plot76
+```
+
+```{r}
+pbmc.singlet_P041 <- subset(pbmc.singlet_P041, subset = nFeature_RNA > 500 & nFeature_RNA < 6000 & percent.mt < 20)
+VlnPlot(pbmc.singlet_P041, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+```
+
+```{r}
+#Scdblfinder
+Idents (pbmc.singlet_P041)
+sce_P041 <- scDblFinder(GetAssayData(pbmc.singlet_P041, slot= "counts"))
+
+#see metadata after doublet identification
+pbmc.singlet_P041$scDblFinder.class <- sce_P041$scDblFinder.class
+View(pbmc.singlet_P041@meta.data)
+
+table(pbmc.singlet_P041@meta.data$scDblFinder.class)
+#visualize the doublets
+Idents(pbmc.singlet_P041) <-pbmc.singlet_P041@meta.data$scDblFinder.class
+Idents(pbmc.singlet_P041)
+VlnPlot(pbmc.singlet_P041, features= c("nFeature_RNA", "nCount_RNA"), ncol=2)
+pbmc.singlet_P041 <- subset(pbmc.singlet_P041, idents = "singlet")
+View(pbmc.singlet_P041@meta.data)
+saveRDS(pbmc.singlet_P041, "P040P041/pbmc.singlet_P041.rds")
 ```
 

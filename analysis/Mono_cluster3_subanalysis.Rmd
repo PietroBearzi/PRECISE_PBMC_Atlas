@@ -1,0 +1,118 @@
+---
+title: "Monocyte_cluster_3"
+output: html_document
+date: "2025-05-22"
+---
+
+```{r setup, include=FALSE}
+library(Seurat)
+library(EnhancedVolcano)
+library(Matrix)
+library(Seurat)
+library(dplyr)
+library(ggplot2)
+library(patchwork)
+library(speckle)
+library(EnhancedVolcano)
+library(tidyverse) # includes ggplot2, for data visualisation. dplyr, for data manipulation.
+library(RColorBrewer) # for a colourful plot
+library(pheatmap)
+library(clusterProfiler) # for PEA analysis
+library('org.Hs.eg.db')
+library(DOSE)
+library("ggupset") 
+set.seed(123) # For reproducibility
+library(DoMultiBarHeatmap)
+library(scCustomize)
+```
+
+
+#Isolate cluster 3 and perform DGE
+```{r}
+mono.cluster3 <- subset(mono.integrated1, integrated_snn_res.0.2 == "3")
+### For cluster 3
+DefaultAssay(mono.cluster3) <- "RNA"
+# Find Markers cluster 3 SSc vs Healthy, corrected for sex status
+Seurat::Idents(mono.cluster3) <- mono.cluster3$group
+MAST_mono.cluster3 <- FindMarkers(mono.cluster3, ident.1 = "P", ident.2 = "H", test.use = "MAST", latent.vars = "gender")
+#Add FDR
+MAST_mono.cluster3$FDR <- p.adjust(MAST_mono.cluster3$p_val, method = "BH")
+#Filter DEGs
+MAST_mono.cluster3_fil <- subset(MAST_mono.cluster3, MAST_mono.cluster3$FDR <= 0.05)
+MAST_mono.cluster3_fil <- subset(MAST_mono.cluster3_fil, abs(avg_log2FC) >= 0.5 )
+```
+
+```{r}
+# Create the volcano plot for the specified cluster
+Volcano_MAST_cluster3 <- EnhancedVolcano(
+  MAST_mono.cluster3,
+  lab = rownames(MAST_mono.cluster3),  # Gene labels
+  x = "avg_log2FC",                    # Log2 Fold Change
+  y = "FDR",                            # False Discovery Rate
+  title = "DEG for cluster 3 monocytes",  # Title of the plot
+  ylab = bquote(~-Log[10] ~ italic(FDR)),  # Y-axis label
+  pCutoff = 0.05,                      # p-value cutoff for significance
+  FCcutoff = 0.5,                      # Fold change cutoff for significance
+  pointSize = 2.0,                     # Size of the points
+  labSize = 5.0,                      # Size of the gene labels
+  axisLabSize = 25.0,                  # Size of axis labels
+  legendLabels = c("NS", "Log2 FC", "FDR", "FDR & Log2 FC") # Legend labels
+)
+
+# Add annotations after creating the volcano plot
+
+
+# Display the plot
+print(Volcano_MAST_cluster3)
+```
+```{r}
+# Define gene features
+features <- c("C3AR1", "CR1", "CX3CR1", "THBS1", "ANPEP", "CD9")
+
+# Custom color mapping
+custom_colors <- c("H" = "steelblue", "P" = "firebrick")
+
+# Generate violin plots with renamed x-axis and custom fill colors
+vln_plots <- lapply(features, function(gene) {
+  VlnPlot(mono.cluster3, features = gene, pt.size = 0) +
+    scale_x_discrete(labels = c("H" = "Healthy", "P" = "SSc")) +
+    scale_fill_manual(values = custom_colors) +
+    ggtitle(gene) +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+    NoLegend()
+})
+
+# Combine plots in 2 rows, 3 per row
+combined_vln <- wrap_plots(vln_plots, ncol = 3)
+
+# Show the final plot
+combined_vln
+```
+#Volcano Labeling only genes of interest
+```{r}
+
+gene_labels <- rep("", nrow(MAST_mono.cluster3))  # Make sure it's the same length as the number of rows in your dataset
+
+# Assign labels to the specific genes of interest
+genes_of_interest <- c("C3RAR1", "THBS1", "IFI44L", "IFI6", "ANPEP")
+gene_labels[rownames(MAST_mono.cluster3) %in% genes_of_interest] <- genes_of_interest
+
+# Generate the volcano plot with connectors
+Volcano_MAST_cluster3_genes <- EnhancedVolcano(
+  MAST_mono.cluster3,
+  lab = gene_labels,                            # Use the gene_labels vector
+  x = "avg_log2FC",                             # X-axis: log2 Fold Change
+  y = "FDR",                                    # Y-axis: False Discovery Rate
+  ylab = bquote(~-Log[10] ~ italic(FDR)),        # Y-axis label with formula notation
+  pCutoff = 0.05,                               # P-value cutoff
+  FCcutoff = 0.5,                               # Fold Change cutoff
+  pointSize = 3.0,                              # Size of points in the plot
+  labSize = 6.0,                                # Size of labels for the genes
+  legendLabels = c("NS", "Log2 FC", "FDR", "FDR & Log2 FC"),  # Custom legend
+  drawConnectors = TRUE,                        # Draw connectors from labels to points
+  widthConnectors = 0.5,                        # Width of connector lines
+  colConnectors = "black"                       # Color of connector lines
+)
+Volcano_MAST_cluster3_genes
+
+```
