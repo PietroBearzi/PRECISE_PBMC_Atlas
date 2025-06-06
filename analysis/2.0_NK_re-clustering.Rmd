@@ -1,0 +1,319 @@
+---
+title: "Clustering of NK"
+author: "PB"
+date: "2024-05-14"
+output: html_document
+---
+
+```{r}
+library(Matrix)
+library(Azimuth)
+library(Seurat)
+library(dplyr)
+library(ggplot2)
+library(stringr)
+library(patchwork)
+library(speckle)
+library(EnhancedVolcano)
+library(tidyverse) # includes ggplot2, for data visualisation. dplyr, for data manipulation.
+library(RColorBrewer) # for a colourful plot
+library(pheatmap)
+library(clusterProfiler) # for PEA analysis
+library('org.Hs.eg.db')
+library(DOSE)
+library(enrichplot)
+library(GOSemSim)
+library("ggupset")
+set.seed(123) # For reproducibility
+```
+
+```{r}
+pbmc.filtered <- readRDS("pbmc.filtered+ILD 16.07.rds")
+pbmc.NK <- subset(pbmc.filtered, subset = predicted.celltype.l1 == "NK")
+table(pbmc.NK$predicted.celltype.l1)
+
+pbmc.NK <- subset(pbmc.NK, subset = HTO_classification.global == "Singlet" )
+table(pbmc.NK$HTO_classification.global)
+```
+
+```{r}
+pbmc.NK@meta.data$integrated_snn_res.0.1<- NULL
+  pbmc.NK@meta.data$integrated_snn_res.0.2<- NULL
+  pbmc.NK@meta.data$integrated_snn_res.0.3<- NULL
+  pbmc.NK@meta.data$integrated_snn_res.0.4<- NULL
+  pbmc.NK@meta.data$integrated_snn_res.0.5<- NULL
+  pbmc.NK@meta.data$integrated_snn_res.0.6<- NULL
+  pbmc.NK@meta.data$integrated_snn_res.0.7<- NULL
+  pbmc.NK@meta.data$integrated_snn_res.0.8<- NULL
+
+  
+pbmc.NK@meta.data$RNA_snn_res.0.1<- NULL
+  pbmc.NK@meta.data$RNA_snn_res.0.2<- NULL
+  pbmc.NK@meta.data$RNA_snn_res.0.3<- NULL
+  pbmc.NK@meta.data$RNA_snn_res.0.4<- NULL
+  pbmc.NK@meta.data$RNA_snn_res.0.5<- NULL
+  pbmc.NK@meta.data$RNA_snn_res.0.6<- NULL
+  pbmc.NK@meta.data$RNA_snn_res.0.7<- NULL
+  pbmc.NK@meta.data$RNA_snn_res.0.8<- NULL
+```
+
+```{r}
+
+
+DefaultAssay(pbmc.NK) <- "RNA"
+Idents(pbmc.NK) <- "HTO_maxID"
+
+# mitochondrial genes
+pbmc.NK <- Seurat::PercentageFeatureSet(pbmc.NK, 
+                                    pattern = "^MT-", 
+                                    col.name = "percent.mito")
+
+# ribosomal genes
+pbmc.NK <- Seurat::PercentageFeatureSet(pbmc.NK, 
+                                    pattern = "^RP[SL]",
+                                    col.name = "percent.ribo")
+
+# hemoglobin genes (but not HBP)
+pbmc.NK <- Seurat::PercentageFeatureSet(pbmc.NK,
+                                    pattern = "^HB[^(P)]",
+                                    col.name = "percent.globin")
+Seurat::VlnPlot(pbmc.NK, features = c("percent.mito",
+                                  "percent.ribo",
+                                  "percent.globin"))
+VlnPlot(pbmc.NK, features = c("nFeature_RNA", "nCount_RNA"))
+
+pbmc.NK <- subset(pbmc.NK, subset = nCount_RNA <20000)
+```
+plot1 <- FeatureScatter(pbmc.NK, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot1
+FeatureScatter(pbmc.NK, feature1 = "nCount_RNA", feature2 = "percent.mito")
+
+
+
+
+
+most_expressed_boxplot <- function(pbmc.NK, ngenes = 20){
+  
+  # matrix of raw counts
+  cts <- Seurat::GetAssayData(pbmc.NK, assay = "RNA", layer = "counts")
+  
+  # get percentage/cell
+  cts <- t(cts)/colSums(cts)*100
+  medians <- apply(cts, 2, median)
+  
+  # get top n genes
+  most_expressed <- order(medians, decreasing = T)[ngenes:1]
+  most_exp_matrix <- as.matrix((cts[,most_expressed]))
+  
+  # prepare for plotting
+  most_exp_df <- stack(as.data.frame(most_exp_matrix))
+  colnames(most_exp_df) <- c("perc_total", "gene")
+  
+  # boxplot with ggplot2
+  boxplot <- ggplot(most_exp_df, aes(x=gene, y=perc_total)) +
+    geom_boxplot() +
+    coord_flip()
+  return(boxplot)
+}
+
+most_expressed_boxplot(pbmc.NK, 20)
+
+Seurat::VlnPlot(pbmc.NK, features = c("nFeature_RNA",
+                                  "percent.mito"))
+
+
+```{r}
+pbmc.NK <- NormalizeData(pbmc.NK, normalization.method = "LogNormalize", scale.factor = 10000)
+pbmc.NK <- FindVariableFeatures(pbmc.NK, selection.method = "vst", nfeatures = 1000)
+
+# Identify the 10 most highly variable genes
+
+top10 <- head(VariableFeatures(pbmc.NK), 10)
+top10
+
+
+
+
+# plot variable features with and without labels
+plot2 <- VariableFeaturePlot(pbmc.NK)
+plot3 <- LabelPoints(plot = plot2, points = top10, repel = TRUE)
+plot2 + plot3
+
+all.genes <- rownames(pbmc.NK)
+pbmc.NK <- ScaleData(pbmc.NK, features = all.genes)
+
+pbmc.NK <- RunPCA(pbmc.NK, features = VariableFeatures(object = pbmc.NK))
+
+# Examine and visualize PCA results a few different ways
+print(pbmc.NK[["pca"]], dims = 1:5, nfeatures = 5)
+
+DimPlot(pbmc.NK, reduction = "pca") + NoLegend()
+
+DimHeatmap(pbmc.NK, dims = 1, cells = 500, balanced = TRUE)
+DimHeatmap(pbmc.NK, dims = 1:15, cells = 500, balanced = TRUE)
+
+ElbowPlot(pbmc.NK, ndims = 40)
+```
+```{r}
+pbmc.NK <- Seurat::RunUMAP(pbmc.NK, dims = 1:25, reduction.name = "umap.unintegrated")
+Seurat::DimPlot(pbmc.NK, reduction = "umap.unintegrated")
+Seurat::DimPlot(pbmc.NK, group.by = "batch", reduction = "umap.unintegrated")
+```
+```{r}
+# Split the object by batch
+pbmc.NK.list <- SplitObject(pbmc.NK, split.by = "batch")
+
+# Normalize and identify variable features for each dataset independently
+for (i in 1:length(pbmc.NK.list)) {
+    pbmc.NK.list[[i]] <- NormalizeData(pbmc.NK.list[[i]], normalization.method = "LogNormalize", scale.factor = 10000)
+    pbmc.NK.list[[i]] <- FindVariableFeatures(pbmc.NK.list[[i]], selection.method = "vst", nfeatures = 1000)
+}
+
+# Find integration anchors
+anchors <- FindIntegrationAnchors(pbmc.NK.list, anchor.features = 2000)
+
+# Integrate data
+NK.integrated <- IntegrateData(anchorset = anchors)
+# Continue with scaling, PCA, UMAP on the integrated object
+NK.integrated <- FindVariableFeatures(NK.integrated, selection.method = "vst", nfeatures = 1000)
+
+# Identify the 10 most highly variable genes
+top10integrated <- head(VariableFeatures(NK.integrated), 10)
+top10integrated
+# plot variable features with and without labels
+plot4 <- VariableFeaturePlot(NK.integrated)
+plot5 <- LabelPoints(plot = plot4, points = top10integrated, repel = TRUE)
+plot4 + plot5
+```
+```{r}
+NK.integrated <- ScaleData(NK.integrated)
+NK.integrated <- RunPCA(NK.integrated, features = VariableFeatures(object = NK.integrated))
+DimPlot(NK.integrated, reduction = "pca") + NoLegend()
+DimHeatmap(NK.integrated, dims = 1:15, cells = 500, balanced = TRUE)
+Seurat::ElbowPlot(NK.integrated, ndims = 40)
+```
+
+```{r}
+NK.integrated <- RunUMAP(NK.integrated, dims = 1:20, reduction.name = "umap.integrated")
+DimPlot(NK.integrated, reduction = "umap.integrated")
+DimPlot(NK.integrated, group.by = "batch", reduction = "umap.integrated")
+DimPlot(NK.integrated, group.by = "HTO_maxID", reduction = "umap.integrated")
+
+```
+```{r}
+NK.integrated <- Seurat::FindNeighbors(NK.integrated, dims = 1:20)
+NK.integrated <- Seurat::FindClusters(NK.integrated, resolution = seq(0.1, 0.8, by=0.1))
+```
+
+
+```{r}
+library(clustree)
+clustree_NK <- clustree::clustree(NK.integrated@meta.data[,grep("integrated_snn_res", colnames(NK.integrated@meta.data))], prefix = "integrated_snn_res.")
+clustree_NK
+```
+
+
+```{r}
+ggsave(filename = paste0("clustree_NK", ".png"), plot = clustree_NK, width = 8, height = 6)
+
+DimPlot_NK <- DimPlot(NK.integrated, group.by = c("integrated_snn_res.0.1", "integrated_snn_res.0.2", "integrated_snn_res.0.3", "integrated_snn_res.0.4", "integrated_snn_res.0.5", "integrated_snn_res.0.6", "integrated_snn_res.0.7", "integrated_snn_res.0.8"), label = T)
+DimPlot_NK
+ggsave(filename = "DimPlot_NK.png", plot = DimPlot_NK, width = 20, height = 20)
+DimPlot_NK_batch <- DimPlot(NK.integrated, group.by = "batch")
+DimPlot_NK_batch
+DimPlot_NK_sampleID <- Seurat::DimPlot(NK.integrated, group.by = "HTO_maxID")
+DimPlot_NK_sampleID
+```
+
+ggsave(filename = paste0("clustree_NK", ".png"), plot = clustree_NK, width = 8, height = 8)
+
+```{r}
+NK.integrated <- Seurat::SetIdent(NK.integrated, value = NK.integrated$integrated_snn_res.0.1)
+DimPlot_NK <- DimPlot(NK.integrated, group.by = "integrated_snn_res.0.1", reduction = "umap.integrated", label = T)
+DimPlot_NK
+```
+
+
+```{r}
+DefaultAssay(NK.integrated) <- "RNA"
+NK.integrated <- RunAzimuth(NK.integrated, reference = "pbmcref")
+table(NK.integrated$predicted.celltype.l1)
+NK.integrated <- subset(NK.integrated, subset = predicted.celltype.l1 == "NK")
+table(NK.integrated$predicted.celltype.l2)
+table(NK.integrated$predicted.celltype.l3)
+
+```
+
+
+```{r}
+DimPlot_NK_azimuth <- DimPlot(NK.integrated, group.by = "predicted.celltype.l2", reduction ="umap.integrated", label = T)
+DimPlot_NK_azimuth
+```
+ggsave(filename = paste0("DimPlot_NK", ".png"), DimPlot_NK + DimPlot_NK_azimuth, width = 10, height =5)
+
+```{r}
+table_prop_NK <- propeller(NK.integrated, clusters = NK.integrated$integrated_snn_res.0.1, sample= NK.integrated$HTO_maxID, group = NK.integrated$dicothomous)
+table_prop_NK_azimuth <- propeller(NK.integrated, clusters = NK.integrated$predicted.celltype.l2, sample= NK.integrated$HTO_maxID, group = NK.integrated$dicothomous)
+```
+
+
+```{r}
+plot_prop.NK_azimuth <- plotCellTypeProps(NK.integrated, clusters = NK.integrated$predicted.celltype.l2, sample= NK.integrated$HTO_maxID)
+plot_prop.NK_azimuth$data$Groups <- NA
+plot_prop.NK_azimuth$data$Groups <- substr(plot_prop.NK_azimuth$data$Samples, start = 1, stop = 1)
+plot_prop.NK_azimuth$data <- plot_prop.NK_azimuth$data %>%
+  mutate(Groups = recode(Groups, "H" = "Healthy", "P" = "SSc"))
+
+prop.NK_azimuth <- ggplot(plot_prop.NK_azimuth$data, aes(x = Clusters, y = Proportions, color = Groups)) +
+  geom_boxplot(position = position_dodge(0.8)) +
+  geom_jitter(position = position_dodge(0.8)) +
+  labs(x = "NK cell subtypes", y = "Proportions", fill = "Clusters", color = "Condition")
+prop.NK_azimuth
+
+plot_prop.NKProliferating_azimuth <- plot_prop.NK_azimuth$data %>%
+  filter(Clusters == "NK Proliferating")
+
+# Boxplot for the 'NK Proliferating' clusters
+prop.NKProliferating_azimuth_plot <- ggplot(plot_prop.NKProliferating_azimuth, aes(x = Groups, y = Proportions, color = Groups)) +
+     geom_boxplot(position = position_dodge(0.8)) +  # Boxplot with dodge position for better separation
+     geom_jitter(width = 0.2, alpha = 0.7) +  # Add jittered points, now using width without position
+     labs(x = "Condition", y = "Proportions", color = "Condition") +
+     theme_minimal() +
+     theme(axis.text.x = element_text(angle = 45, hjust = 1))
+ 
+# Display the plot
+prop.NKProliferating_azimuth_plot
+```
+ggsave("NK proliferating_plot.png", prop.NKProliferating_azimuth_plot, dpi = 300, height = , width = 4 )
+```{r}
+# find markers for every cluster compared to all remaining cells, report only the positive
+# ones
+NK.integrated <- SetIdent(NK.integrated, value = NK.integrated$integrated_snn_res.0.1)
+NK.markers <- FindAllMarkers(NK.integrated, only.pos = TRUE, min.pct = 0.3)
+
+# Filtering markers to those with avg_log2FC > 1 and selecting top 10 per cluster
+top10_manual <- NK.markers %>%
+    group_by(cluster) %>%
+    filter(avg_log2FC > 1) %>%
+    slice_head(n = 10) %>%
+    ungroup()
+```
+
+```{r}
+# Set palette
+mapal <- colorRampPalette(RColorBrewer::brewer.pal(9,"RdBu"))(256)
+mapal <- rev(mapal[1:256])
+NK.integrated <- ScaleData(NK.integrated, features = top10_manual$gene)
+
+Heatmap_NK_clusters <- DoHeatmap(NK.integrated, draw.line = T, features = top10_manual$gene) +
+  scale_fill_gradientn(colours = mapal) +
+  theme(
+    text = element_text(size = 6),
+    axis.text.y = element_text(size = 5),
+    axis.text.x = element_text(size = 6),  # Decrease the x-axis text size
+    plot.margin = unit(c(0.1, 0, 0, 0), "inches")
+  )
+Heatmap_NK_clusters
+```
+ggsave("Heatmap NK clusters.png",Heatmap_NK_clusters, width =10, height = 5, dpi = 300 )
+

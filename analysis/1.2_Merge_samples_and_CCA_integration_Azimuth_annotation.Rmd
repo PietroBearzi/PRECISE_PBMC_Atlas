@@ -1,0 +1,283 @@
+---
+title: "1.2_Merge_samples_and_CCA_integration"
+output: html_document
+date: "2025-06-06"
+---
+```{r}
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(Seurat)
+library(hdf5r)
+library(BiocManager)
+library(limma)
+library(sctransform)
+library(scDblFinder)
+```
+
+```{r}
+pbmc.singlet_merged <- merge(pbmc.singlet_H002, y = c(pbmc.singlet_P030, pbmc.singlet_H004, pbmc.singlet_P026, pbmc.singlet_H008, pbmc.singlet_P019, pbmc.singlet_H043, pbmc.singlet_P034, pbmc.singlet_H050, pbmc.singlet_H048, pbmc.singlet_P002, pbmc.singlet_P023, pbmc.singlet_P007, pbmc.singlet_P016, pbmc.singlet_P008, pbmc.singlet_H054, pbmc.singlet_P015, pbmc.singlet_P027, pbmc.singlet_P017, pbmc.singlet_H044, pbmc.singlet_P018, pbmc.singlet_P014, pbmc.singlet_P020, pbmc.singlet_P010, pbmc.singlet_P021, pbmc.singlet_P028, pbmc.singlet_P024, pbmc.singlet_H059, pbmc.singlet_P025, pbmc.singlet_P037, pbmc.singlet_P029, pbmc.singlet_P006, pbmc.singlet_P040, pbmc.singlet_P041), add.cell.ids = c("H002", "P030", "H004", "P026", "H008", "P019", "H043", "P034", "H050", "H048", "P002", "P023", "P007", "P016", "P008", "H054", "P015", "P027", "P017", "H044", "P018", "P014", "P020", "P010", "P021", "P028", "P024", "H059", "P025", "P037", "P029", "P006", "P040", "P041"), project = "PBMC_MERGED")
+head(colnames(pbmc.singlet_merged))
+tail(colnames(pbmc.singlet_merged))
+unique(sapply(X = strsplit(colnames(pbmc.singlet_merged), split = "_"), FUN = "[", 1))
+
+# Corrected code to create a new column "dicothomus" based on the first character of "add.cell.ids" healthy(H) vs SSc(P)
+pbmc.singlet_merged$dicothomous <- substr(pbmc.singlet_merged$HTO_maxID, start = 1, stop = 1)
+
+# Assuming you have a Seurat object named 'pbmc.singlet_merged' and a column 'add.cell.ids' containing cell IDs
+
+# Create a vector to store batch information
+batch_vector <- character(length(pbmc.singlet_merged$HTO_maxID))
+
+# Define batches based on specific cell IDs
+batch_vector[pbmc.singlet_merged$HTO_maxID %in% c("H002", "P030", "H008", "P019")] <- "batch1"
+batch_vector[pbmc.singlet_merged$HTO_maxID %in% c("H043", "P034", "P007", "P016", "P018", "P014")] <- "batch2"
+batch_vector[pbmc.singlet_merged$HTO_maxID %in% c("H050", "H048", "P029", "P006", "P021", "P028")] <- "batch3"
+batch_vector[pbmc.singlet_merged$HTO_maxID %in% c("H004", "P026", "P010", "P020", "P025", "P037")] <- "batch4"
+batch_vector[pbmc.singlet_merged$HTO_maxID %in% c("P024", "H059", "P015", "P027")] <- "batch5"
+batch_vector[pbmc.singlet_merged$HTO_maxID %in% c("P040", "P041")] <- "batch6"
+batch_vector[pbmc.singlet_merged$HTO_maxID %in% c("P002", "P023", "P008", "H054", "P017", "H044")] <- "batch7"
+
+# Add the batch vector to the Seurat object
+pbmc.singlet_merged$batch <- batch_vector
+
+View(pbmc.singlet_merged@meta.data)
+```
+
+```{r}
+#Normalize data
+pbmc.singlet_merged <- NormalizeData(pbmc.singlet_merged, normalization.method = "LogNormalize", scale.factor = 10000)
+```
+
+```{r}
+pbmc.singlet_merged <- FindVariableFeatures(pbmc.singlet_merged, selection.method = "vst", nfeatures = 2000)
+# Identify the 10 most highly variable genes
+top10 <- head(VariableFeatures(pbmc.singlet_merged), 10)
+
+# plot variable features with and without labels
+plot_merged1 <- VariableFeaturePlot(pbmc.singlet_merged)
+plot_merged2 <- LabelPoints(plot = plot_merged1, points = top10, repel = TRUE)
+plot_merged1 + plot_merged2
+# scaling data
+all.genes <- rownames(pbmc.singlet_merged)
+pbmc.singlet_merged <- ScaleData(pbmc.singlet_merged, features = all.genes)
+
+pbmc.singlet_merged <- RunPCA(pbmc.singlet_merged, features = VariableFeatures(object = pbmc.singlet_merged))
+
+print(pbmc.singlet_merged[["pca"]], dims = 1:5, nfeatures = 10)
+DimHeatmap(pbmc.singlet_merged, dims = 1:10, cells = 500, balanced = TRUE)
+
+ElbowPlot(pbmc.singlet_merged, ndims = 40)
+```
+
+```{r}
+#Cluster cells, after elbow plot
+pbmc.singlet_merged <- FindNeighbors(pbmc.singlet_merged, dims = 1:30)
+pbmc.singlet_merged <- FindClusters(pbmc.singlet_merged, resolution = seq(0.1, 0.8, by=0.1))
+
+#UMAP/tSNE
+pbmc.singlet_merged <- RunUMAP(pbmc.singlet_merged, dims = 1:30, reduction = "pca", reduction.name = "umap.unintegrated")
+
+head(Idents(pbmc.singlet_merged), 5)
+head(pbmc.singlet_merged@meta.data)
+#Visualize how cells move between different resolution
+# Which res. to choose? (visualize DimpLot & clustree )
+DimPlot(pbmc.singlet_merged, group.by = c("RNA_snn_res.0.1", "RNA_snn_res.0.2", "RNA_snn_res.0.3", "RNA_snn_res.0.4", "RNA_snn_res.0.5", "RNA_snn_res.0.6", "RNA_snn_res.0.7", "RNA_snn_res.0.8"))
+install.packages("clustree")
+library(clustree)
+clustree(pbmc.singlet_merged@meta.data[,grep("RNA_snn_res", colnames(pbmc.singlet_merged@meta.data))],
+         prefix = "RNA_snn_res.")
+
+#Choose resolution of choice
+pbmc.singlet_merged <-SetIdent(pbmc.singlet_merged, value=pbmc.singlet_merged$RNA_snn_res.0.6)
+# After choosing resolution of choice, check distribution of cells per sample per cluster:
+table(pbmc.singlet_merged$RNA_snn_res.0.6,
+      pbmc.singlet_merged$orig.ident)
+# See clustering in choosen resolution(res)
+DimPlot(pbmc.singlet_merged, group.by = "RNA_snn_res.0.6")
+
+
+DimPlot(pbmc.singlet_merged, reduction = "umap.unintegrated", group.by = c("batch", "dicothomous"))
+DimPlot(pbmc.singlet_merged, reduction = "umap.unintegrated", group.by = "hash.ID")
+
+
+# note that you can set `label = TRUE` or use the LabelClusters function to help label
+# individual clusters
+
+saveRDS(pbmc.singlet_merged, file = "pbmc.singlet_merged_unintegrated.rds")
+
+```
+
+pbmc.singlet_unintegrated <- readRDS("G:/Pietro/Precise_merged/pbmc.singlet_merged_unintegrated.rds")
+
+```{r}
+plot.pbmc.singlet_unintegrated <- VlnPlot(pbmc.singlet_unintegrated, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), group.by = "batch", ncol = 3)
+
+```
+
+```{r}
+pbmc_singlet_batch.list <- SplitObject(pbmc.singlet_unintegrated, split.by = "batch")
+for (i in 1:length(pbmc_singlet_batch.list)) {
+  pbmc_singlet_batch.list[[i]] <- SCTransform(pbmc_singlet_batch.list[[i]], verbose = TRUE, vst.flavor = "v2", vars.to.regress = "percent.mt")}
+
+saveRDS(pbmc_singlet_batch.list, file = "pbmc_singlet_batch_list.rds")
+
+features <- SelectIntegrationFeatures(object.list = pbmc_singlet_batch.list, nfeatures = 2000)
+pbmc_singlet_batch.list <- PrepSCTIntegration(object.list = pbmc_singlet_batch.list, anchor.features = features)
+pbmc_singlet_batch.anchors <- FindIntegrationAnchors(object.list = pbmc_singlet_batch.list, normalization.method = "SCT", anchor.features = features)
+
+pbmc.singlet_integrated <- IntegrateData(anchorset = pbmc_singlet_batch.anchors, normalization.method = "SCT")
+
+DefaultAssay(pbmc.singlet_integrated) <- "integrated"
+saveRDS(pbmc.singlet_integrated, file = "pbmc.singlet_integrated.rds")
+```
+
+```{r}
+pbmc.singlet_integrated <- RunPCA(pbmc.singlet_integrated)
+DimHeatmap(pbmc.singlet_integrated, dims = 1:10, cells = 500, balanced = TRUE)
+ElbowPlot(pbmc.singlet_integrated, ndims = 40)
+#Check resolution, set resolution
+pbmc.singlet_integrated <- RunUMAP(pbmc.singlet_integrated, reduction = "pca", dims = 1:x, verbose = TRUE)
+pbmc.singlet_integrated <- FindNeighbors(pbmc.singlet_integrated, reduction = "pca", dims = 1:x, verbose = TRUE)
+pbmc.singlet_integrated <- FindClusters(pbmc.singlet_integrated, resolution = seq(0.1, 0.8, by=0.1))
+
+DimPlot(pbmc.singlet_integrated, reduction = "umap", group.by = , label = TRUE, shuffle = T)
+
+
+
+
+
+
+DimPlot(, group.by = c("RNA_snn_res.0.1", "RNA_snn_res.0.2", "RNA_snn_res.0.3", "RNA_snn_res.0.4", "RNA_snn_res.0.5", "RNA_snn_res.0.6", "RNA_snn_res.0.7", "RNA_snn_res.0.8"))
+install.packages("clustree")
+library(clustree)
+clustree(pbmc.singlet_merged@meta.data[,grep("RNA_snn_res", colnames(pbmc.singlet_merged@meta.data))],
+         prefix = "RNA_snn_res.")
+
+############## India ############
+
+
+# perform integration to correct for batch effects ------
+obj.list <- SplitObject(merged_seurat_filtered, split.by = 'Patient')
+for(i in 1:length(obj.list)){
+  obj.list[[i]] <- NormalizeData(object = obj.list[[i]])
+  obj.list[[i]] <- FindVariableFeatures(object = obj.list[[i]])
+}
+
+
+# select integration features
+features <- SelectIntegrationFeatures(object.list = obj.list)
+
+# find integration anchors (CCA)
+anchors <- FindIntegrationAnchors(object.list = obj.list,
+                                  anchor.features = features)
+
+# integrate data
+seurat.integrated <- IntegrateData(anchorset = anchors)
+```
+
+```{r}
+#Integration
+###CCA Integration
+
+#To perform the integration, we split our object by batch, resulting into a set of layers within the RNA assay. The #layers are integrated and stored in the reduction slot - in our case we call it integrated.cca. Then, we re-join the #layers
+pbmc.singlet_merged[["RNA"]] <- split(pbmc.singlet_merged[["RNA"]], f = pbmc.singlet_merged$batch)
+pbmc.singlet_merged
+
+pbmc.singlet_merged <- Seurat::IntegrateLayers(pbmc.singlet_merged, method = CCAIntegration,
+                                               orig.reduction = "pca",
+                                               new.reduction = "integrated.cca",
+                                               verbose = FALSE)
+# re-join layers after integration
+pbmc.singlet_merged[["RNA"]] <- JoinLayers(pbmc.singlet_merged[["RNA"]])
+#Rename Seurat Object to pbmc.integrated
+pbmc.integrated <- pbmc.singlet_merged
+```
+
+#Automatic PBMC Annotation with Azimuth
+```{r}
+library(Azimuth)
+pbmc.integrated <- RunAzimuth(pbmc.integrated, reference = "pbmcref")
+saveRDS(pbmc.integrated, file = "pbmc_integrated_azimuth.rds")
+
+```
+pbmc.integrated <- readRDS("pbmc_integrated_azimuth.rds")
+
+```{r}
+cluster1 <- DimPlot(pbmc.integrated, group.by = "predicted.celltype.l2", label= T, repel =T)
+cluster2 <- DimPlot(pbmc.integrated, group.by = "predicted.celltype.l1", label = T)
+cluster1+ cluster2
+```
+
+```{r}
+#visualize cell distributiion according to dicothomous: SSc vs healthy
+cellCounts1 <- table(cluster = pbmc.integrated$predicted.celltype.l1, sample = pbmc.integrated$dicothomous)
+cellPerc <- sweep(cellCounts1, 2, colSums(cellCounts1), "/")
+p1 <- ggplot(data = as.data.frame(cellPerc), aes(x = sample, fill = cluster, y = Freq)) +
+  geom_bar(stat = "identity") +
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust = 1)) +
+  labs(x = "", y = "fraction of cells")
+
+cellCounts2 <- table(cluster = pbmc.integrated$predicted.celltype.l2, sample = pbmc.integrated$dicothomous)
+cellPerc <- sweep(cellCounts2, 2, colSums(cellCounts2), "/")
+p2 <- ggplot(data = as.data.frame(cellPerc), aes(x = sample, fill = cluster, y = Freq)) +
+  geom_bar(stat = "identity") +
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust = 1)) +
+  labs(x = "", y = "fraction of cells")
+
+
+p1 + p2
+```
+
+```{r}
+cellCounts5 <- table(cluster = pbmc.integrated$predicted.celltype.l1, sample = pbmc.integrated$batch)
+cellPerc <- sweep(cellCounts5, 2, colSums(cellCounts5), "/")
+p3 <- ggplot(data = as.data.frame(cellPerc), aes(x = sample, fill = cluster, y = Freq)) +
+  geom_bar(stat = "identity") +
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust = 1)) +
+  labs(x = "", y = "fraction of cells")
+
+cellCounts4 <- table(cluster = pbmc.integrated$predicted.celltype.l2, sample = pbmc.integrated$batch)
+cellPerc <- sweep(cellCounts4, 2, colSums(cellCounts4), "/")
+p4 <- ggplot(data = as.data.frame(cellPerc), aes(x = sample, fill = cluster, y = Freq)) +
+  geom_bar(stat = "identity") +
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust = 1)) +
+  labs(x = "", y = "fraction of cells")
+
+
+p3 + p4
+```
+
+pbmc.healthy <- subset(pbmc.integrated, subset = dicothomous == "H")
+pbmc.ssc <- subset(pbmc.integrated, subset = dicothomous == "P")
+table(pbmc.healthy$dicothomous)
+table(pbmc.ssc$dicothomous)
+```{r}
+cellCounts5 <- table(cluster = pbmc.healthy$predicted.celltype.l1, sample = pbmc.healthy$HTO_maxID)
+cellPerc <- sweep(cellCounts5, 2, colSums(cellCounts5), "/")
+p5 <- ggplot(data = as.data.frame(cellPerc), aes(x = sample, fill = cluster, y = Freq)) +
+  geom_bar(stat = "identity") +
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust = 1)) +
+  labs(x = "", y = "fraction of cells")
+p5
+cellCounts6 <- table(cluster = pbmc.ssc$predicted.celltype.l1, sample = pbmc.ssc$HTO_maxID)
+cellPerc <- sweep(cellCounts6, 2, colSums(cellCounts6), "/")
+p6 <- ggplot(data = as.data.frame(cellPerc), aes(x = sample, fill = cluster, y = Freq)) +
+  geom_bar(stat = "identity") +
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust = 1)) +
+  labs(x = "", y = "fraction of cells")
+p6
+```
+
+```{r}
+ssc1 <- DimPlot(pbmc.ssc, group.by = "predicted.celltype.l1", label = T)
+ssc2 <- DimPlot(pbmc.ssc, group.by = "predicted.celltype.l2", label = T, repel= T)
+ssc1
+ssc2
+```
+```{r}
+healthy1 <- DimPlot(pbmc.healthy, group.by = "predicted.celltype.l1", label = T)
+healthy2 <- DimPlot(pbmc.healthy, group.by = "predicted.celltype.l2", label = T, repel= T)
+healthy1
+healthy2
+```

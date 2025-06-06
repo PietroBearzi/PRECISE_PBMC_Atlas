@@ -20,9 +20,13 @@ library(BiocManager)
 library(limma)
 library(sctransform)
 #library(enrichR)
-#library(scDblFinder)
+library(scDblFinder)
+set.seed(123)
+```
 
 
+```{r}
+# Load h5 files
 H002P030<- Read10X_h5("G:/Pietro/Precise_merged/H002P030/filtered_feature_bc_matrix.h5")
 H004P026<- Read10X_h5("G:/Pietro/Precise_merged/H004P026/filtered_feature_bc_matrix.h5")
 H008P019<- Read10X_h5("G:/Pietro/Precise_merged/H008P019/filtered_feature_bc_matrix.h5")
@@ -44,6 +48,7 @@ P032P035<- Read10X_h5("G:/Pietro/Precise_merged/P032P035/filtered_feature_bc_mat
 P025P037<- Read10X_h5("G:/Pietro/Precise_merged/P025P037/filtered_feature_bc_matrix.h5")
 P040P041<- Read10X_h5("G:/Pietro/Precise_merged/P040P041/filtered_feature_bc_matrix.h5")
 ```
+#H002P030
 ```{r}
 # Load in the UMI matrix
 pbmcH002P030.umis <- H002P030$`Gene Expression`
@@ -82,9 +87,9 @@ pbmcH002P030.hashtag <- NormalizeData(pbmcH002P030.hashtag)
 pbmcH002P030.hashtag <- FindVariableFeatures(pbmcH002P030.hashtag, selection.method = "vst", nfeatures = 2000)
 ```
 
-#### Normalize HTO and Adding HTO data as an independent assay 
 
 ```{r error=TRUE}
+# Normalize HTO and Adding HTO data as an independent assay 
 # Add HTO data as a new assay independent from RNA
 pbmcH002P030.hashtag[["HTO"]] <- CreateAssayObject(counts = short_htosH002P030)
 short_adtH002P030 <- pbmcH002P030.htos[1:27,]
@@ -92,13 +97,10 @@ rownames(short_adtH002P030)
 pbmcH002P030.hashtag[["ADT"]] <- CreateAssayObject(counts = short_adtH002P030)
 # Normalize HTO data, here we use centered log-ratio (CLR) transformation
 pbmcH002P030.hashtag <- NormalizeData(pbmcH002P030.hashtag, assay = "HTO", normalization.method = "CLR")
-#No addition of ADT
-#pbmc.hashtag <- NormalizeData(pbmc.hashtag, assay = "ADT", normalization.method = "CLR")
 ```
 
-#### Demultiplex cells based on HTO enrichment
-
 ```{r}
+#### Demultiplex cells based on HTO enrichment
 pbmcH002P030.hashtag <- HTODemux(pbmcH002P030.hashtag, assay = "HTO", positive.quantile = 0.7, kfunc = "kmeans")
 #### Visualize demultiplexing results
 # Global classification results
@@ -110,14 +112,11 @@ table(pbmcH002P030.hashtag$HTO_classification.global)
 # Group cells based on the max HTO signal
 Idents(pbmcH002P030.hashtag) <- "HTO_maxID"
 RidgePlot(pbmcH002P030.hashtag, assay = "HTO", features = rownames(pbmcH002P030.hashtag[["HTO"]])[1:2], ncol = 2)
-
 ```
 
 ```{r error=TRUE}
-
 Idents(pbmcH002P030.hashtag) <- "hash.ID"
 FeatureScatter(object = pbmcH002P030.hashtag, feature1 = "H002", feature2 = "P030")
-
 ```
 
 ```{r}
@@ -153,7 +152,7 @@ DefaultAssay(pbmc.singlet_H002) <- "RNA"
 #table(pbmc.singlet_H004$HTO_classification.global)
 ```
 
-
+#Sample H002
 
 ```{r}
 pbmc.singlet_H002[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_H002, pattern = "^MT-")
@@ -165,11 +164,10 @@ plot1 + plot2
 ```{r}
 pbmc.singlet_H002 <- subset(pbmc.singlet_H002, subset = nFeature_RNA > 750 & nFeature_RNA < 5000 & percent.mt < 15)
 VlnPlot(pbmc.singlet_H002, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
-
 ```
+
 ```{r}
-#SCdblfinder
-set.seed(123)
+#ScDblFinder
 Idents (pbmc.singlet_H002)
 sce_H002 <- scDblFinder(GetAssayData(pbmc.singlet_H002, slot= "counts"))
 View(pbmc.singlet_H002@meta.data)
@@ -187,7 +185,7 @@ pbmc.singlet_H002 <- subset(pbmc.singlet_H002, idents = "singlet")
 saveRDS(pbmc.singlet_H002, "H002P030/pbmc.singlet_H002.rds")
 ```
 
-######Patient030###################
+# Sample P030
 
 ```{r}
 #QC and filtering
@@ -221,8 +219,8 @@ pbmc.singlet_P030 <- subset(pbmc.singlet_P030, idents = "singlet")
 saveRDS(pbmc.singlet_P030, "H002P030/pbmc.singlet_P030.rds")
 ```
 
-```{r}
 #H004P026
+```{r}
 # Load in the UMI matrix
 pbmcH004P026.umis <- H004P026$`Gene Expression`
   
@@ -251,10 +249,6 @@ rownames(short_htosH004P026)
 
 ```
 
-
-#### Setup Seurat object and and normalise RNA data
-
-
 ```{r error=TRUE}
 # Setup Seurat object
 pbmcH004P026.hashtag <- CreateSeuratObject(counts = pbmcH004P026.umis)
@@ -264,9 +258,9 @@ pbmcH004P026.hashtag <- NormalizeData(pbmcH004P026.hashtag)
 pbmcH004P026.hashtag <- FindVariableFeatures(pbmcH004P026.hashtag, selection.method = "vst", nfeatures = 2000)
 
 ```
-#### Normalize HTO and Adding HTO data as an independent assay 
 
 ```{r error=TRUE}
+# Normalize HTO and Adding HTO data as an independent assay
 # Add HTO data as a new assay independent from RNA
 pbmcH004P026.hashtag[["HTO"]] <- CreateAssayObject(counts = short_htosH004P026)
 short_adtH004P026 <- pbmcH004P026.htos[1:27,]
@@ -274,13 +268,10 @@ rownames(short_adtH004P026)
 pbmcH004P026.hashtag[["ADT"]] <- CreateAssayObject(counts = short_adtH004P026)
 # Normalize HTO data, here we use centered log-ratio (CLR) transformation
 pbmcH004P026.hashtag <- NormalizeData(pbmcH004P026.hashtag, assay = "HTO", normalization.method = "CLR")
-#No addition of ADT
-#pbmc.hashtag <- NormalizeData(pbmc.hashtag, assay = "ADT", normalization.method = "CLR")
 ```
 
-#### Demultiplex cells based on HTO enrichment
-
 ```{r error=TRUE}
+#### Demultiplex cells based on HTO enrichment
 pbmcH004P026.hashtag <- HTODemux(pbmcH004P026.hashtag, assay = "HTO", positive.quantile = 0.7, kfunc = "kmeans")
 #### Visualize demultiplexing results
 # Global classification results
@@ -296,10 +287,8 @@ RidgePlot(pbmcH004P026.hashtag, assay = "HTO", features = rownames(pbmcH004P026.
 ```
 
 ```{r error=TRUE}
-
 Idents(pbmcH004P026.hashtag) <- "hash.ID"
 FeatureScatter(object = pbmcH004P026.hashtag, feature1 = "H004", feature2 = "P026")
-
 ```
 
 ```{r}
@@ -328,17 +317,13 @@ Idents(pbmc.singlet_H004) <- "hash.ID"
 plots<- FeatureScatter(pbmc.singlet_H004, feature1 = "H004", feature2 = "P026")
 patchwork::wrap_plots(plots) * xlim(c(0, 4)) + ylim(c(0, 4))
 DefaultAssay(pbmc.singlet_H004) <- "RNA"
-
-
 ```
 
 ```{r}
 # Global classification results
 table(pbmc.singlet_H004$HTO_classification.global)
 ```
-
-
-
+#Sample H004
 ```{r}
 pbmc.singlet_H004[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_H004, pattern = "^MT-")
 VlnPlot(pbmc.singlet_H004, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
@@ -346,13 +331,14 @@ plot5 <- FeatureScatter(pbmc.singlet_H004, feature1 = "nCount_RNA", feature2 = "
 plot6 <- FeatureScatter(pbmc.singlet_H004, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
 plot5 + plot6
 ```
+
 ```{r}
 pbmc.singlet_H004 <- subset(pbmc.singlet_H004, subset = nFeature_RNA > 500 & nFeature_RNA < 5000 & percent.mt < 15)
 VlnPlot(pbmc.singlet_H004, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
-
 ```
+
 ```{r}
-#SCdblfinder
+#ScDblFinder
 set.seed(123)
 Idents (pbmc.singlet_H004)
 sce_H004 <- scDblFinder(GetAssayData(pbmc.singlet_H004, slot= "counts"))
@@ -370,10 +356,8 @@ pbmc.singlet_H004 <- subset(pbmc.singlet_H004, idents = "singlet")
 
 saveRDS(pbmc.singlet_H004, "H004P026/pbmc.singlet_H004.rds")
 ```
-
+#Sample P026
 ```{r}
-###Patient026###################
-
 #QC and filtering
 pbmc.singlet_P026[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_P026, pattern = "^MT-")
 VlnPlot(pbmc.singlet_P026, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
@@ -386,6 +370,7 @@ VlnPlot(pbmc.singlet_P026, features = c("nFeature_RNA", "nCount_RNA", "percent.m
 ```
 
 ```{r}
+#scDblFinder
 Idents (pbmc.singlet_P026)
 sce_P026 <- scDblFinder(GetAssayData(pbmc.singlet_P026, slot= "counts"))
 View(pbmc.singlet_P026@meta.data)
@@ -402,9 +387,8 @@ pbmc.singlet_P026 <- subset(pbmc.singlet_P026, idents = "singlet")
 saveRDS(pbmc.singlet_P026, "H004P026/pbmc.singlet_P026.rds")
 ```
 
-```{r}
 #H008P019
-
+```{r}
 # Load in the UMI matrix
 pbmcH008P019.umis <- H008P019$`Gene Expression`
   
@@ -442,9 +426,9 @@ pbmcH008P019.hashtag <- NormalizeData(pbmcH008P019.hashtag)
 pbmcH008P019.hashtag <- FindVariableFeatures(pbmcH008P019.hashtag, selection.method = "vst", nfeatures = 2000)
 ```
 
-#### Normalize HTO and Adding HTO data as an independent assay 
 
 ```{r error=TRUE}
+#### Normalize HTO and Adding HTO data as an independent assay 
 # Add HTO data as a new assay independent from RNA
 pbmcH008P019.hashtag[["HTO"]] <- CreateAssayObject(counts = short_htosH008P019)
 short_adtH008P019 <- pbmcH008P019.htos[1:27,]
@@ -452,15 +436,12 @@ rownames(short_adtH008P019)
 pbmcH008P019.hashtag[["ADT"]] <- CreateAssayObject(counts = short_adtH008P019)
 # Normalize HTO data, here we use centered log-ratio (CLR) transformation
 pbmcH008P019.hashtag <- NormalizeData(pbmcH008P019.hashtag, assay = "HTO", normalization.method = "CLR")
-#No addition of ADT
-#pbmc.hashtag <- NormalizeData(pbmc.hashtag, assay = "ADT", normalization.method = "CLR")
 ```
 
-#### Demultiplex cells based on HTO enrichment
-
 ```{r}
+# Demultiplex cells based on HTO enrichment
 pbmcH008P019.hashtag <- HTODemux(pbmcH008P019.hashtag, assay = "HTO", positive.quantile = 0.7, kfunc = "kmeans")
-#### Visualize demultiplexing results
+# Visualize demultiplexing results
 # Global classification results
 table(pbmcH008P019.hashtag$HTO_classification.global)
 ```
@@ -506,7 +487,6 @@ Idents(pbmc.singlet_H008) <- "hash.ID"
 plotsH008<- FeatureScatter(pbmc.singlet_H008, feature1 = "H008", feature2 = "P019")
 patchwork::wrap_plots(plots) * xlim(c(0, 4)) + ylim(c(0, 4))
 DefaultAssay(pbmc.singlet_H008) <- "RNA"
-
 ```
 
 ```{r}
@@ -515,7 +495,7 @@ table(pbmc.singlet_H008$HTO_classification.global)
 ```
 
 
-
+# Sample H008
 ```{r}
 pbmc.singlet_H008[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_H008, pattern = "^MT-")
 VlnPlot(pbmc.singlet_H008, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
@@ -548,8 +528,7 @@ View(pbmc.singlet_H008@meta.data)
 saveRDS(pbmc.singlet_H008, "H008P019/pbmc.singlet_H008.rds")
 ```
 
-######Patient019###################
-
+#Sample P019
 ```{r}
 #QC and filtering
 pbmc.singlet_P019[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_P019, pattern = "^MT-")
@@ -582,9 +561,8 @@ View(pbmc.singlet_P019@meta.data)
 saveRDS(pbmc.singlet_P019, "H008P019/pbmc.singlet_P019.rds")
 ```
 
-```{r}
 #H043P034
-
+```{r}
 # Load in the UMI matrix
 pbmcH043P034.umis <- H043P034$`Gene Expression`
   
@@ -613,18 +591,17 @@ rownames(short_htosH043P034)
 ```
 
 ```{r}
-#### Setup Seurat object and and normalise hashtag data
+# Setup Seurat object and and normalise hashtag data
 # Setup Seurat object
 pbmcH043P034.hashtag <- CreateSeuratObject(counts = pbmcH043P034.umis)
 # Normalize RNA data with log normalization
 pbmcH043P034.hashtag <- NormalizeData(pbmcH043P034.hashtag)
-
 pbmcH043P034.hashtag <- FindVariableFeatures(pbmcH043P034.hashtag, selection.method = "vst", nfeatures = 2000)
 ```
 
-#### Normalize HTO and Adding HTO data as an independent assay 
 
 ```{r error=TRUE}
+# Normalize HTO and Adding HTO data as an independent assay 
 # Add HTO data as a new assay independent from RNA
 pbmcH043P034.hashtag[["HTO"]] <- CreateAssayObject(counts = short_htosH043P034)
 short_adtH043P034 <- pbmcH043P034.htos[1:27,]
@@ -632,13 +609,10 @@ rownames(short_adtH043P034)
 pbmcH043P034.hashtag[["ADT"]] <- CreateAssayObject(counts = short_adtH043P034)
 # Normalize HTO data, here we use centered log-ratio (CLR) transformation
 pbmcH043P034.hashtag <- NormalizeData(pbmcH043P034.hashtag, assay = "HTO", normalization.method = "CLR")
-#No addition of ADT
-#pbmc.hashtag <- NormalizeData(pbmc.hashtag, assay = "ADT", normalization.method = "CLR")
 ```
 
-#### Demultiplex cells based on HTO enrichment
-
 ```{r}
+# Demultiplex cells based on HTO enrichment
 pbmcH043P034.hashtag <- HTODemux(pbmcH043P034.hashtag, assay = "HTO", positive.quantile = 0.7, kfunc = "kmeans")
 #### Visualize demultiplexing results
 # Global classification results
@@ -646,19 +620,15 @@ table(pbmcH043P034.hashtag$HTO_classification.global)
 ```
 
 ```{r error=TRUE}
-#### Visualize enrichment for selected HTOs with ridge plots
+# Visualize enrichment for selected HTOs with ridge plots
 # Group cells based on the max HTO signal
 Idents(pbmcH043P034.hashtag) <- "HTO_maxID"
 RidgePlot(pbmcH043P034.hashtag, assay = "HTO", features = rownames(pbmcH043P034.hashtag[["HTO"]])[1:2], ncol = 2)
-
 ```
 
 ```{r error=TRUE}
-
 Idents(pbmcH043P034.hashtag) <- "hash.ID"
 FeatureScatter(pbmcH043P034.hashtag, feature1 = "H043", feature2 = "P034")
-
-
 ```
 
 ```{r}
@@ -693,8 +663,7 @@ DefaultAssay(pbmc.singlet_H043) <- "RNA"
 table(pbmc.singlet_H043$HTO_classification.global)
 ```
 
-
-
+#Sample H043
 ```{r}
 pbmc.singlet_H043[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_H043, pattern = "^MT-")
 VlnPlot(pbmc.singlet_H043, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
@@ -702,6 +671,7 @@ plot13 <- FeatureScatter(pbmc.singlet_H043, feature1 = "nCount_RNA", feature2 = 
 plot14 <- FeatureScatter(pbmc.singlet_H043, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
 plot13 + plot14
 ```
+
 ```{r}
 pbmc.singlet_H043 <- subset(pbmc.singlet_H043, subset = nFeature_RNA > 500 & nFeature_RNA < 5000 & percent.mt < 20)
 VlnPlot(pbmc.singlet_H043, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
@@ -727,8 +697,7 @@ View(pbmc.singlet_H043@meta.data)
 saveRDS(pbmc.singlet_H043, "H043P034/pbmc.singlet_H043.rds")
 ```
 
-######Patient034###################
-
+#Sample P034
 ```{r}
 #QC and filtering
 pbmc.singlet_P034[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_P034, pattern = "^MT-")
@@ -760,9 +729,9 @@ pbmc.singlet_P034 <- subset(pbmc.singlet_P034, idents = "singlet")
 View(pbmc.singlet_P034@meta.data)
 saveRDS(pbmc.singlet_P034, "H043P034/pbmc.singlet_P034")
 ```
-```{r}
-###################H047P001
 
+#H047P001
+```{r}
 # Load in the UMI matrix
 pbmcH047P001.umis <- H047P001$`Gene Expression`
   
@@ -800,9 +769,9 @@ pbmcH047P001.hashtag <- NormalizeData(pbmcH047P001.hashtag)
 pbmcH047P001.hashtag <- FindVariableFeatures(pbmcH047P001.hashtag, selection.method = "vst", nfeatures = 2000)
 ```
 
-#### Normalize HTO and Adding HTO data as an independent assay 
 
 ```{r error=TRUE}
+# Normalize HTO and Adding HTO data as an independent assay 
 # Add HTO data as a new assay independent from RNA
 pbmcH047P001.hashtag[["HTO"]] <- CreateAssayObject(counts = short_htosH047P001)
 short_adtH047P001 <- pbmcH047P001.htos[1:27,]
@@ -810,13 +779,10 @@ rownames(short_adtH047P001)
 pbmcH047P001.hashtag[["ADT"]] <- CreateAssayObject(counts = short_adtH047P001)
 # Normalize HTO data, here we use centered log-ratio (CLR) transformation
 pbmcH047P001.hashtag <- NormalizeData(pbmcH047P001.hashtag, assay = "HTO", normalization.method = "CLR")
-#No addition of ADT
-#pbmc.hashtag <- NormalizeData(pbmc.hashtag, assay = "ADT", normalization.method = "CLR")
 ```
 
-#### Demultiplex cells based on HTO enrichment
-
 ```{r}
+#### Demultiplex cells based on HTO enrichment
 pbmcH047P001.hashtag <- HTODemux(pbmcH047P001.hashtag, assay = "HTO", positive.quantile = 0.7, kfunc = "kmeans")
 #### Visualize demultiplexing results
 # Global classification results
@@ -832,11 +798,8 @@ RidgePlot(pbmcH047P001.hashtag, assay = "HTO", features = rownames(pbmcH047P001.
 ```
 
 ```{r error=TRUE}
-
 Idents(pbmcH047P001.hashtag) <- "hash.ID"
 FeatureScatter(pbmcH047P001.hashtag, feature1 = "H047", feature2 = "P001")
-
-
 ```
 
 ```{r}
@@ -871,8 +834,7 @@ DefaultAssay(pbmc.singlet_H047) <- "RNA"
 table(pbmc.singlet_H047$HTO_classification.global)
 ```
 
-
-
+#Sample H047
 ```{r}
 pbmc.singlet_H047[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_H047, pattern = "^MT-")
 pbmc.singlet_H047[["percent.ribo"]] <- PercentageFeatureSet(pbmc.singlet_H047, 
@@ -907,7 +869,7 @@ View(pbmc.singlet_H047@meta.data)
 saveRDS(pbmc.singlet_H047, "H047P001/pbmc.singlet_H047.rds")
 ```
 
-######Patient001###################
+#Sample P001
 
 ```{r}
 #QC and filtering
@@ -943,10 +905,8 @@ pbmc.singlet_P001 <- subset(pbmc.singlet_P001, idents = "singlet")
 View(pbmc.singlet_P001@meta.data)
 saveRDS(pbmc.singlet_P001, "H047P001/pbmc.singlet_P001")
 ```
-
-```{r}
 #H050H048
-
+```{r}
 # Load in the UMI matrix
 pbmcH050H048.umis <- H050H048$`Gene Expression`
   
@@ -984,9 +944,8 @@ pbmcH050H048.hashtag <- NormalizeData(pbmcH050H048.hashtag)
 pbmcH050H048.hashtag <- FindVariableFeatures(pbmcH050H048.hashtag, selection.method = "vst", nfeatures = 2000)
 ```
 
-#### Normalize HTO and Adding HTO data as an independent assay 
-
 ```{r error=TRUE}
+#### Normalize HTO and Adding HTO data as an independent assay
 # Add HTO data as a new assay independent from RNA
 pbmcH050H048.hashtag[["HTO"]] <- CreateAssayObject(counts = short_htosH050H048)
 short_adtH050H048 <- pbmcH050H048.htos[1:27,]
@@ -994,15 +953,13 @@ rownames(short_adtH050H048)
 pbmcH050H048.hashtag[["ADT"]] <- CreateAssayObject(counts = short_adtH050H048)
 # Normalize HTO data, here we use centered log-ratio (CLR) transformation
 pbmcH050H048.hashtag <- NormalizeData(pbmcH050H048.hashtag, assay = "HTO", normalization.method = "CLR")
-#No addition of ADT
-#pbmc.hashtag <- NormalizeData(pbmc.hashtag, assay = "ADT", normalization.method = "CLR")
 ```
 
-#### Demultiplex cells based on HTO enrichment
 
 ```{r}
+# Demultiplex cells based on HTO enrichment
 pbmcH050H048.hashtag <- HTODemux(pbmcH050H048.hashtag, assay = "HTO", positive.quantile = 0.7, kfunc = "kmeans")
-#### Visualize demultiplexing results
+# Visualize demultiplexing results
 # Global classification results
 table(pbmcH050H048.hashtag$HTO_classification.global)
 ```
@@ -1016,11 +973,8 @@ RidgePlot(pbmcH050H048.hashtag, assay = "HTO", features = rownames(pbmcH050H048.
 ```
 
 ```{r error=TRUE}
-
 Idents(pbmcH050H048.hashtag) <- "hash.ID"
 FeatureScatter(pbmcH050H048.hashtag, feature1 = "H050", feature2 = "H048")
-
-
 ```
 
 ```{r}
@@ -1055,8 +1009,7 @@ DefaultAssay(pbmc.singlet_H050) <- "RNA"
 table(pbmc.singlet_H050$HTO_classification.global)
 ```
 
-
-
+#Sample H050
 ```{r}
 pbmc.singlet_H050[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_H050, pattern = "^MT-")
 VlnPlot(pbmc.singlet_H050, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
@@ -1089,9 +1042,8 @@ View(pbmc.singlet_H050@meta.data)
 saveRDS(pbmc.singlet_H050, "H050H048/pbmc.singlet_H050.rds")
 ```
 
-######Healthy048###################
-
-```{r}
+# Sample H048
+````{r}
 #QC and filtering
 pbmc.singlet_H048[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_H048, pattern = "^MT-")
 VlnPlot(pbmc.singlet_H048, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
@@ -1106,7 +1058,7 @@ VlnPlot(pbmc.singlet_H048, features = c("nFeature_RNA", "nCount_RNA", "percent.m
 ```
 
 ```{r}
-#Scdblfinder
+#ScDblFinder
 Idents (pbmc.singlet_H048)
 sce_H048 <- scDblFinder(GetAssayData(pbmc.singlet_H048, slot= "counts"))
 
@@ -1122,10 +1074,8 @@ pbmc.singlet_H048 <- subset(pbmc.singlet_H048, idents = "singlet")
 View(pbmc.singlet_H048@meta.data)
 saveRDS(pbmc.singlet_H048, "H050H048/pbmc.singlet_H048")
 ```
-
-```{r}
 #P002P023
-
+```{r}
 # Load in the UMI matrix
 pbmcP002P023.umis <- P002P023$`Gene Expression`
   
@@ -1163,9 +1113,8 @@ pbmcP002P023.hashtag <- NormalizeData(pbmcP002P023.hashtag)
 pbmcP002P023.hashtag <- FindVariableFeatures(pbmcP002P023.hashtag, selection.method = "vst", nfeatures = 2000)
 ```
 
-#### Normalize HTO and Adding HTO data as an independent assay 
-
 ```{r error=TRUE}
+# Normalize HTO and Adding HTO data as an independent assay 
 # Add HTO data as a new assay independent from RNA
 pbmcP002P023.hashtag[["HTO"]] <- CreateAssayObject(counts = short_htosP002P023)
 short_adtP002P023 <- pbmcP002P023.htos[1:27,]
@@ -1173,13 +1122,10 @@ rownames(short_adtP002P023)
 pbmcP002P023.hashtag[["ADT"]] <- CreateAssayObject(counts = short_adtP002P023)
 # Normalize HTO data, here we use centered log-ratio (CLR) transformation
 pbmcP002P023.hashtag <- NormalizeData(pbmcP002P023.hashtag, assay = "HTO", normalization.method = "CLR")
-#No addition of ADT
-#pbmc.hashtag <- NormalizeData(pbmc.hashtag, assay = "ADT", normalization.method = "CLR")
 ```
 
-#### Demultiplex cells based on HTO enrichment
-
 ```{r}
+# Demultiplex cells based on HTO enrichment
 pbmcP002P023.hashtag <- HTODemux(pbmcP002P023.hashtag, assay = "HTO", positive.quantile = 0.7, kfunc = "kmeans")
 #### Visualize demultiplexing results
 # Global classification results
@@ -1195,11 +1141,8 @@ RidgePlot(pbmcP002P023.hashtag, assay = "HTO", features = rownames(pbmcP002P023.
 ```
 
 ```{r error=TRUE}
-
 Idents(pbmcP002P023.hashtag) <- "hash.ID"
 FeatureScatter(pbmcP002P023.hashtag, feature1 = "P002", feature2 = "P023")
-
-
 ```
 
 ```{r}
@@ -1234,8 +1177,7 @@ DefaultAssay(pbmc.singlet_P002) <- "RNA"
 table(pbmc.singlet_P002$HTO_classification.global)
 ```
 
-
-
+#Sample P002
 ```{r}
 pbmc.singlet_P002[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_P002, pattern = "^MT-")
 VlnPlot(pbmc.singlet_P002, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
@@ -1250,7 +1192,6 @@ VlnPlot(pbmc.singlet_P002, features = c("nFeature_RNA", "nCount_RNA", "percent.m
 
 ```{r}
 #SCdblfinder
-set.seed(123)
 Idents (pbmc.singlet_P002)
 sce_P002 <- scDblFinder(GetAssayData(pbmc.singlet_P002, slot= "counts"))
 View(pbmc.singlet_P002@meta.data)
@@ -1268,8 +1209,7 @@ View(pbmc.singlet_P002@meta.data)
 saveRDS(pbmc.singlet_P002, "P002P023/pbmc.singlet_P002.rds")
 ```
 
-######PatientP023###################
-
+#Sample P023
 ```{r}
 #QC and filtering
 pbmc.singlet_P023[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_P023, pattern = "^MT-")
@@ -1302,9 +1242,8 @@ View(pbmc.singlet_P023@meta.data)
 saveRDS(pbmc.singlet_P023, "P002P023/pbmc.singlet_P023.rds")
 ```
 
-```{r}
 #P007P016
-
+```{r}
 # Load in the UMI matrix
 pbmcP007P016.umis <- P007P016$`Gene Expression`
   
@@ -1342,9 +1281,8 @@ pbmcP007P016.hashtag <- NormalizeData(pbmcP007P016.hashtag)
 pbmcP007P016.hashtag <- FindVariableFeatures(pbmcP007P016.hashtag, selection.method = "vst", nfeatures = 2000)
 ```
 
-#### Normalize HTO and Adding HTO data as an independent assay 
-
 ```{r error=TRUE}
+#### Normalize HTO and Adding HTO data as an independent assay 
 # Add HTO data as a new assay independent from RNA
 pbmcP007P016.hashtag[["HTO"]] <- CreateAssayObject(counts = short_htosP007P016)
 short_adtP007P016 <- pbmcP007P016.htos[1:27,]
@@ -1352,13 +1290,11 @@ rownames(short_adtP007P016)
 pbmcP007P016.hashtag[["ADT"]] <- CreateAssayObject(counts = short_adtP007P016)
 # Normalize HTO data, here we use centered log-ratio (CLR) transformation
 pbmcP007P016.hashtag <- NormalizeData(pbmcP007P016.hashtag, assay = "HTO", normalization.method = "CLR")
-#No addition of ADT
-#pbmc.hashtag <- NormalizeData(pbmc.hashtag, assay = "ADT", normalization.method = "CLR")
 ```
 
-#### Demultiplex cells based on HTO enrichment
 
 ```{r}
+# Demultiplex cells based on HTO enrichment
 pbmcP007P016.hashtag <- HTODemux(pbmcP007P016.hashtag, assay = "HTO", positive.quantile = 0.7, kfunc = "kmeans")
 #### Visualize demultiplexing results
 # Global classification results
@@ -1370,15 +1306,11 @@ table(pbmcP007P016.hashtag$HTO_classification.global)
 # Group cells based on the max HTO signal
 Idents(pbmcP007P016.hashtag) <- "HTO_maxID"
 RidgePlot(pbmcP007P016.hashtag, assay = "HTO", features = rownames(pbmcP007P016.hashtag[["HTO"]])[1:2], ncol = 2)
-
 ```
 
 ```{r error=TRUE}
-
 Idents(pbmcP007P016.hashtag) <- "hash.ID"
 FeatureScatter(pbmcP007P016.hashtag, feature1 = "P007", feature2 = "P016")
-
-
 ```
 
 ```{r}
@@ -1386,13 +1318,14 @@ DefaultAssay(pbmcP007P016.hashtag) <- "HTO"
 pbmcP007P016.singlet <- subset(pbmcP007P016.hashtag, subset = P016 > 0.5 & P007 < 4)
 Idents(pbmcP007P016.singlet) <- "hash.ID"
 FeatureScatter(pbmcP007P016.singlet, feature1 = "P007", feature2 = "P016")
-```
+
 # Create the initial scatter plot
 plotP016 <- FeatureScatter(pbmcP007P016.singlet, feature1 = "P007", feature2 = "P016")
 
 # Zoom in on the plot using coord_cartesian
 library(ggplot2)
 plotP016 + coord_cartesian(xlim = c(0, 2), ylim = c(0, 4))
+```
 
 ```{r}
 DefaultAssay(pbmcP007P016.hashtag) <- "HTO"
@@ -1402,13 +1335,15 @@ Idents(pbmc.singlet_P016) <- "hash.ID"
 plotsP016<- FeatureScatter(pbmc.singlet_P016, feature1 = "P007", feature2 = "P016")
 patchwork::wrap_plots(plotsP016) * xlim(c(0, 4)) + ylim(c(0, 4))
 DefaultAssay(pbmc.singlet_P016) <- "RNA"
-```
+
 # Create the initial scatter plot
 plotP007 <- FeatureScatter(pbmcP007P016.hashtag, feature1 = "P007", feature2 = "P016")
 
 # Zoom in on the plot using coord_cartesian
 library(ggplot2)
 plotP007 + coord_cartesian(xlim = c(0, 4), ylim = c(0, 0.5))
+```
+
 ```{r}
 DefaultAssay(pbmcP007P016.hashtag) <- "HTO"
 pbmc.singlet_P007 <- subset(pbmcP007P016.hashtag, subset = P016 < 0.2 & P007 > 0.5)
@@ -1425,8 +1360,7 @@ table(pbmc.singlet_P007$HTO_classification.global)
 table(pbmc.singlet_P016$HTO_classification.global)
 ```
 
-
-
+#Sample P007
 ```{r}
 pbmc.singlet_P007[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_P007, pattern = "^MT-")
 VlnPlot(pbmc.singlet_P007, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
@@ -1459,8 +1393,7 @@ View(pbmc.singlet_P007@meta.data)
 saveRDS(pbmc.singlet_P007, "P007P016/pbmc.singlet_P007.rds")
 ```
 
-######PatientP016###################
-
+#Sample P016
 ```{r}
 #QC and filtering
 pbmc.singlet_P016[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_P016, pattern = "^MT-")
@@ -1492,9 +1425,9 @@ pbmc.singlet_P016 <- subset(pbmc.singlet_P016, idents = "singlet")
 View(pbmc.singlet_P016@meta.data)
 saveRDS(pbmc.singlet_P016, "P007P016/pbmc.singlet_P016.rds")
 ```
-```{r}
-#P008H054
 
+#P008H054
+```{r}
 # Load in the UMI matrix
 pbmcP008H054.umis <- P008H054$`Gene Expression`
   
@@ -1532,9 +1465,10 @@ pbmcP008H054.hashtag <- NormalizeData(pbmcP008H054.hashtag)
 pbmcP008H054.hashtag <- FindVariableFeatures(pbmcP008H054.hashtag, selection.method = "vst", nfeatures = 2000)
 ```
 
-#### Normalize HTO and Adding HTO data as an independent assay 
+ 
 
 ```{r error=TRUE}
+# Normalize HTO and Adding HTO data as an independent assay
 # Add HTO data as a new assay independent from RNA
 pbmcP008H054.hashtag[["HTO"]] <- CreateAssayObject(counts = short_htosP008H054)
 short_adtP008H054 <- pbmcP008H054.htos[1:27,]
@@ -1542,33 +1476,26 @@ rownames(short_adtP008H054)
 pbmcP008H054.hashtag[["ADT"]] <- CreateAssayObject(counts = short_adtP008H054)
 # Normalize HTO data, here we use centered log-ratio (CLR) transformation
 pbmcP008H054.hashtag <- NormalizeData(pbmcP008H054.hashtag, assay = "HTO", normalization.method = "CLR")
-#No addition of ADT
-#pbmc.hashtag <- NormalizeData(pbmc.hashtag, assay = "ADT", normalization.method = "CLR")
 ```
 
-#### Demultiplex cells based on HTO enrichment
-
 ```{r}
+# Demultiplex cells based on HTO enrichment
 pbmcP008H054.hashtag <- HTODemux(pbmcP008H054.hashtag, assay = "HTO", positive.quantile = 0.7, kfunc = "kmeans")
-#### Visualize demultiplexing results
+# Visualize demultiplexing results
 # Global classification results
 table(pbmcP008H054.hashtag$HTO_classification.global)
 ```
 
 ```{r error=TRUE}
-#### Visualize enrichment for selected HTOs with ridge plots
+# Visualize enrichment for selected HTOs with ridge plots
 # Group cells based on the max HTO signal
 Idents(pbmcP008H054.hashtag) <- "HTO_maxID"
 RidgePlot(pbmcP008H054.hashtag, assay = "HTO", features = rownames(pbmcP008H054.hashtag[["HTO"]])[1:2], ncol = 2)
-
 ```
 
 ```{r error=TRUE}
-
 Idents(pbmcP008H054.hashtag) <- "hash.ID"
 FeatureScatter(pbmcP008H054.hashtag, feature1 = "P008", feature2 = "H054")
-
-
 ```
 
 ```{r}
@@ -1576,13 +1503,13 @@ DefaultAssay(pbmcP008H054.hashtag) <- "HTO"
 pbmcP008H054.singlet <- subset(pbmcP008H054.hashtag, subset = H054 > 0.5 & P008 < 4)
 Idents(pbmcP008H054.singlet) <- "hash.ID"
 FeatureScatter(pbmcP008H054.singlet, feature1 = "P008", feature2 = "H054")
-```
+
 # Create the initial scatter plot
 plotH054 <- FeatureScatter(pbmcP008H054.singlet, feature1 = "P008", feature2 = "H054")
-
 # Zoom in on the plot using coord_cartesian
 library(ggplot2)
 plotH054 + coord_cartesian(xlim = c(0, 1), ylim = c(0, 4))
+```
 
 ```{r}
 DefaultAssay(pbmcP008H054.hashtag) <- "HTO"
@@ -1592,13 +1519,14 @@ Idents(pbmc.singlet_H054) <- "hash.ID"
 plotsH054<- FeatureScatter(pbmc.singlet_H054, feature1 = "P008", feature2 = "H054")
 patchwork::wrap_plots(plotsH054) * xlim(c(0, 4)) + ylim(c(0, 4))
 DefaultAssay(pbmc.singlet_H054) <- "RNA"
-```
+
 # Create the initial scatter plot
 plotP008 <- FeatureScatter(pbmcP008H054.hashtag, feature1 = "P008", feature2 = "H054")
-
 # Zoom in on the plot using coord_cartesian
 library(ggplot2)
 plotP008 + coord_cartesian(xlim = c(0, 4), ylim = c(0, 0.5))
+```
+
 ```{r}
 DefaultAssay(pbmcP008H054.hashtag) <- "HTO"
 pbmc.singlet_P008 <- subset(pbmcP008H054.hashtag, subset = H054 < 0.4 & P008 > 0.6)
@@ -1616,7 +1544,7 @@ table(pbmc.singlet_H054$HTO_classification.global)
 ```
 
 
-
+#Sample P008
 ```{r}
 pbmc.singlet_P008[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_P008, pattern = "^MT-")
 VlnPlot(pbmc.singlet_P008, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
@@ -1649,7 +1577,7 @@ View(pbmc.singlet_P008@meta.data)
 saveRDS(pbmc.singlet_P008, "P008H054/pbmc.singlet_P008.rds")
 ```
 
-######PatientH054###################
+#Sample H054
 
 ```{r}
 #QC and filtering
@@ -1683,9 +1611,8 @@ View(pbmc.singlet_H054@meta.data)
 saveRDS(pbmc.singlet_H054, "P008H054/pbmc.singlet_H054.rds")
 ```
 
-```{r}
 #P015P027
-
+```{r}
 # Load in the UMI matrix
 pbmcP015P027.umis <- P015P027$`Gene Expression`
   
@@ -1723,9 +1650,9 @@ pbmcP015P027.hashtag <- NormalizeData(pbmcP015P027.hashtag)
 pbmcP015P027.hashtag <- FindVariableFeatures(pbmcP015P027.hashtag, selection.method = "vst", nfeatures = 2000)
 ```
 
-#### Normalize HTO and Adding HTO data as an independent assay 
 
 ```{r error=TRUE}
+# Normalize HTO and Adding HTO data as an independent assay 
 # Add HTO data as a new assay independent from RNA
 pbmcP015P027.hashtag[["HTO"]] <- CreateAssayObject(counts = short_htosP015P027)
 short_adtP015P027 <- pbmcP015P027.htos[1:27,]
@@ -1733,13 +1660,11 @@ rownames(short_adtP015P027)
 pbmcP015P027.hashtag[["ADT"]] <- CreateAssayObject(counts = short_adtP015P027)
 # Normalize HTO data, here we use centered log-ratio (CLR) transformation
 pbmcP015P027.hashtag <- NormalizeData(pbmcP015P027.hashtag, assay = "HTO", normalization.method = "CLR")
-#No addition of ADT
-#pbmc.hashtag <- NormalizeData(pbmc.hashtag, assay = "ADT", normalization.method = "CLR")
 ```
 
-#### Demultiplex cells based on HTO enrichment
 
 ```{r}
+#### Demultiplex cells based on HTO enrichment
 pbmcP015P027.hashtag <- HTODemux(pbmcP015P027.hashtag, assay = "HTO", positive.quantile = 0.7, kfunc = "kmeans")
 #### Visualize demultiplexing results
 # Global classification results
@@ -1755,11 +1680,8 @@ RidgePlot(pbmcP015P027.hashtag, assay = "HTO", features = rownames(pbmcP015P027.
 ```
 
 ```{r error=TRUE}
-
 Idents(pbmcP015P027.hashtag) <- "hash.ID"
 FeatureScatter(pbmcP015P027.hashtag, feature1 = "P015", feature2 = "P027")
-
-
 ```
 
 ```{r}
@@ -1767,13 +1689,13 @@ DefaultAssay(pbmcP015P027.hashtag) <- "HTO"
 pbmcP015P027.singlet <- subset(pbmcP015P027.hashtag, subset = P027 > 0.7 & P015 < 4)
 Idents(pbmcP015P027.singlet) <- "hash.ID"
 FeatureScatter(pbmcP015P027.singlet, feature1 = "P015", feature2 = "P027")
-```
+
 # Create the initial scatter plot
 plotP027 <- FeatureScatter(pbmcP015P027.singlet, feature1 = "P015", feature2 = "P027")
-
 # Zoom in on the plot using coord_cartesian
 library(ggplot2)
 plotP027 + coord_cartesian(xlim = c(0, 1), ylim = c(0, 4))
+```
 
 ```{r}
 DefaultAssay(pbmcP015P027.hashtag) <- "HTO"
@@ -1783,13 +1705,14 @@ Idents(pbmc.singlet_P027) <- "hash.ID"
 plotsP027<- FeatureScatter(pbmc.singlet_P027, feature1 = "P015", feature2 = "P027")
 patchwork::wrap_plots(plotsP027) * xlim(c(0, 4)) + ylim(c(0, 4))
 DefaultAssay(pbmc.singlet_P027) <- "RNA"
-```
+
 # Create the initial scatter plot
 plotP015 <- FeatureScatter(pbmcP015P027.hashtag, feature1 = "P015", feature2 = "P027")
-
 # Zoom in on the plot using coord_cartesian
 library(ggplot2)
 plotP015 + coord_cartesian(xlim = c(0, 4), ylim = c(0, 0.5))
+```
+
 ```{r}
 DefaultAssay(pbmcP015P027.hashtag) <- "HTO"
 pbmc.singlet_P015 <- subset(pbmcP015P027.hashtag, subset = P027 < 0.5 & P015 > 0.5)
@@ -1806,8 +1729,7 @@ table(pbmc.singlet_P015$HTO_classification.global)
 table(pbmc.singlet_P027$HTO_classification.global)
 ```
 
-
-
+#Sample P015
 ```{r}
 pbmc.singlet_P015[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_P015, pattern = "^MT-")
 VlnPlot(pbmc.singlet_P015, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
@@ -1840,7 +1762,7 @@ View(pbmc.singlet_P015@meta.data)
 saveRDS(pbmc.singlet_P015, "P015P027/pbmc.singlet_P015.rds")
 ```
 
-######PatientP027###################
+#Sample P027
 
 ```{r}
 #QC and filtering
@@ -1874,9 +1796,9 @@ pbmc.singlet_P027 <- subset(pbmc.singlet_P027, idents = "singlet")
 View(pbmc.singlet_P027@meta.data)
 saveRDS(pbmc.singlet_P027, "P015P027/pbmc.singlet_P027.rds")
 ```
-```{r}
-#P017H044
 
+#P017H044
+```{r}
 # Load in the UMI matrix
 pbmcP017H044.umis <- P017H044$`Gene Expression`
   
@@ -1914,9 +1836,9 @@ pbmcP017H044.hashtag <- NormalizeData(pbmcP017H044.hashtag)
 pbmcP017H044.hashtag <- FindVariableFeatures(pbmcP017H044.hashtag, selection.method = "vst", nfeatures = 2000)
 ```
 
-#### Normalize HTO and Adding HTO data as an independent assay 
 
 ```{r error=TRUE}
+# Normalize HTO and Adding HTO data as an independent assay 
 # Add HTO data as a new assay independent from RNA
 pbmcP017H044.hashtag[["HTO"]] <- CreateAssayObject(counts = short_htosP017H044)
 short_adtP017H044 <- pbmcP017H044.htos[1:27,]
@@ -1924,13 +1846,12 @@ rownames(short_adtP017H044)
 pbmcP017H044.hashtag[["ADT"]] <- CreateAssayObject(counts = short_adtP017H044)
 # Normalize HTO data, here we use centered log-ratio (CLR) transformation
 pbmcP017H044.hashtag <- NormalizeData(pbmcP017H044.hashtag, assay = "HTO", normalization.method = "CLR")
-#No addition of ADT
-#pbmc.hashtag <- NormalizeData(pbmc.hashtag, assay = "ADT", normalization.method = "CLR")
+
 ```
 
-#### Demultiplex cells based on HTO enrichment
 
 ```{r}
+# Demultiplex cells based on HTO enrichment
 pbmcP017H044.hashtag <- HTODemux(pbmcP017H044.hashtag, assay = "HTO", positive.quantile = 0.7, kfunc = "kmeans")
 #### Visualize demultiplexing results
 # Global classification results
@@ -1938,7 +1859,7 @@ table(pbmcP017H044.hashtag$HTO_classification.global)
 ```
 
 ```{r error=TRUE}
-#### Visualize enrichment for selected HTOs with ridge plots
+# Visualize enrichment for selected HTOs with ridge plots
 # Group cells based on the max HTO signal
 Idents(pbmcP017H044.hashtag) <- "HTO_maxID"
 RidgePlot(pbmcP017H044.hashtag, assay = "HTO", features = rownames(pbmcP017H044.hashtag[["HTO"]])[1:2], ncol = 2)
@@ -1946,11 +1867,8 @@ RidgePlot(pbmcP017H044.hashtag, assay = "HTO", features = rownames(pbmcP017H044.
 ```
 
 ```{r error=TRUE}
-
 Idents(pbmcP017H044.hashtag) <- "hash.ID"
 FeatureScatter(pbmcP017H044.hashtag, feature1 = "P017", feature2 = "H044")
-
-
 ```
 
 ```{r}
@@ -1958,13 +1876,12 @@ DefaultAssay(pbmcP017H044.hashtag) <- "HTO"
 pbmcP017H044.singlet <- subset(pbmcP017H044.hashtag, subset = H044 > 0.5 & P017 < 4)
 Idents(pbmcP017H044.singlet) <- "hash.ID"
 FeatureScatter(pbmcP017H044.singlet, feature1 = "P017", feature2 = "H044")
-```
 # Create the initial scatter plot
 plotH044 <- FeatureScatter(pbmcP017H044.singlet, feature1 = "P017", feature2 = "H044")
-
 # Zoom in on the plot using coord_cartesian
 library(ggplot2)
 plotH044 + coord_cartesian(xlim = c(0, 1), ylim = c(0, 4))
+```
 
 ```{r}
 DefaultAssay(pbmcP017H044.hashtag) <- "HTO"
@@ -1974,13 +1891,15 @@ Idents(pbmc.singlet_H044) <- "hash.ID"
 plotsH044<- FeatureScatter(pbmc.singlet_H044, feature1 = "P017", feature2 = "H044")
 patchwork::wrap_plots(plotsH044) * xlim(c(0, 4)) + ylim(c(0, 4))
 DefaultAssay(pbmc.singlet_H044) <- "RNA"
-```
+
 # Create the initial scatter plot
 plotP017 <- FeatureScatter(pbmcP017H044.hashtag, feature1 = "P017", feature2 = "H044")
 
 # Zoom in on the plot using coord_cartesian
 library(ggplot2)
 plotP017 + coord_cartesian(xlim = c(0, 4), ylim = c(0, 0.5))
+```
+
 ```{r}
 DefaultAssay(pbmcP017H044.hashtag) <- "HTO"
 pbmc.singlet_P017 <- subset(pbmcP017H044.hashtag, subset = H044 < 0.41 & P017 > 0.5)
@@ -1996,9 +1915,7 @@ DefaultAssay(pbmc.singlet_P017) <- "RNA"
 table(pbmc.singlet_P017$HTO_classification.global)
 table(pbmc.singlet_H044$HTO_classification.global)
 ```
-
-
-
+# Sample P017
 ```{r}
 pbmc.singlet_P017[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_P017, pattern = "^MT-")
 VlnPlot(pbmc.singlet_P017, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
@@ -2031,8 +1948,7 @@ View(pbmc.singlet_P017@meta.data)
 saveRDS(pbmc.singlet_P017, "P017H044/pbmc.singlet_P017.rds")
 ```
 
-######PatientH044###################
-
+#Sample H044
 ```{r}
 #QC and filtering
 pbmc.singlet_H044[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_H044, pattern = "^MT-")
@@ -2066,9 +1982,8 @@ View(pbmc.singlet_H044@meta.data)
 saveRDS(pbmc.singlet_H044, "P017H044/pbmc.singlet_H044.rds")
 ```
 
-```{r}
 #P018P014
-
+```{r}
 # Load in the UMI matrix
 pbmcP018P014.umis <- P018P014$`Gene Expression`
   
@@ -2097,7 +2012,7 @@ rownames(short_htosP018P014)
 ```
 
 ```{r}
-#### Setup Seurat object and and normalise hashtag data
+# Setup Seurat object and and normalise hashtag data
 # Setup Seurat object
 pbmcP018P014.hashtag <- CreateSeuratObject(counts = pbmcP018P014.umis)
 # Normalize RNA data with log normalization
@@ -2106,9 +2021,9 @@ pbmcP018P014.hashtag <- NormalizeData(pbmcP018P014.hashtag)
 pbmcP018P014.hashtag <- FindVariableFeatures(pbmcP018P014.hashtag, selection.method = "vst", nfeatures = 2000)
 ```
 
-#### Normalize HTO and Adding HTO data as an independent assay 
 
 ```{r error=TRUE}
+# Normalize HTO and Adding HTO data as an independent assay 
 # Add HTO data as a new assay independent from RNA
 pbmcP018P014.hashtag[["HTO"]] <- CreateAssayObject(counts = short_htosP018P014)
 short_adtP018P014 <- pbmcP018P014.htos[1:27,]
@@ -2116,15 +2031,13 @@ rownames(short_adtP018P014)
 pbmcP018P014.hashtag[["ADT"]] <- CreateAssayObject(counts = short_adtP018P014)
 # Normalize HTO data, here we use centered log-ratio (CLR) transformation
 pbmcP018P014.hashtag <- NormalizeData(pbmcP018P014.hashtag, assay = "HTO", normalization.method = "CLR")
-#No addition of ADT
-#pbmc.hashtag <- NormalizeData(pbmc.hashtag, assay = "ADT", normalization.method = "CLR")
 ```
 
-#### Demultiplex cells based on HTO enrichment
 
 ```{r}
+# Demultiplex cells based on HTO enrichment
 pbmcP018P014.hashtag <- HTODemux(pbmcP018P014.hashtag, assay = "HTO", positive.quantile = 0.7, kfunc = "kmeans")
-#### Visualize demultiplexing results
+# Visualize demultiplexing results
 # Global classification results
 table(pbmcP018P014.hashtag$HTO_classification.global)
 ```
@@ -2138,11 +2051,8 @@ RidgePlot(pbmcP018P014.hashtag, assay = "HTO", features = rownames(pbmcP018P014.
 ```
 
 ```{r error=TRUE}
-
 Idents(pbmcP018P014.hashtag) <- "hash.ID"
 FeatureScatter(pbmcP018P014.hashtag, feature1 = "P018", feature2 = "P014")
-
-
 ```
 
 ```{r}
@@ -2150,13 +2060,13 @@ DefaultAssay(pbmcP018P014.hashtag) <- "HTO"
 pbmcP018P014.singlet <- subset(pbmcP018P014.hashtag, subset = P014 > 0.5 & P018 < 4)
 Idents(pbmcP018P014.singlet) <- "hash.ID"
 FeatureScatter(pbmcP018P014.singlet, feature1 = "P018", feature2 = "P014")
-```
 # Create the initial scatter plot
 plotP014 <- FeatureScatter(pbmcP018P014.singlet, feature1 = "P018", feature2 = "P014")
 
 # Zoom in on the plot using coord_cartesian
 library(ggplot2)
 plotP014 + coord_cartesian(xlim = c(0, 1), ylim = c(0, 4))
+```
 
 ```{r}
 DefaultAssay(pbmcP018P014.hashtag) <- "HTO"
@@ -2166,13 +2076,14 @@ Idents(pbmc.singlet_P014) <- "hash.ID"
 plotsP014<- FeatureScatter(pbmc.singlet_P014, feature1 = "P018", feature2 = "P014")
 patchwork::wrap_plots(plotsP014) * xlim(c(0, 4)) + ylim(c(0, 4))
 DefaultAssay(pbmc.singlet_P014) <- "RNA"
-```
 # Create the initial scatter plot
 plotP018 <- FeatureScatter(pbmcP018P014.hashtag, feature1 = "P018", feature2 = "P014")
 
 # Zoom in on the plot using coord_cartesian
 library(ggplot2)
 plotP018 + coord_cartesian(xlim = c(0, 4), ylim = c(0, 0.5))
+```
+
 ```{r}
 DefaultAssay(pbmcP018P014.hashtag) <- "HTO"
 pbmc.singlet_P018 <- subset(pbmcP018P014.hashtag, subset = P014 < 0.45 & P018 > 0.5)
@@ -2188,9 +2099,7 @@ DefaultAssay(pbmc.singlet_P018) <- "RNA"
 table(pbmc.singlet_P018$HTO_classification.global)
 table(pbmc.singlet_P014$HTO_classification.global)
 ```
-
-
-
+# Sample P018
 ```{r}
 pbmc.singlet_P018[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_P018, pattern = "^MT-")
 VlnPlot(pbmc.singlet_P018, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
@@ -2223,7 +2132,7 @@ View(pbmc.singlet_P018@meta.data)
 saveRDS(pbmc.singlet_P018, "P018P014/pbmc.singlet_P018.rds")
 ```
 
-######PatientP014###################
+#Sample P014
 
 ```{r}
 #QC and filtering
@@ -2258,9 +2167,9 @@ View(pbmc.singlet_P014@meta.data)
 saveRDS(pbmc.singlet_P014, "P018P014/pbmc.singlet_P014.rds")
 ```
 
-```{r}
-#P020P010
 
+#P020P010
+```{r}
 # Load in the UMI matrix
 pbmcP020P010.umis <- P020P010$`Gene Expression`
   
@@ -2289,7 +2198,7 @@ rownames(short_htosP020P010)
 ```
 
 ```{r}
-#### Setup Seurat object and and normalise hashtag data
+# Setup Seurat object and and normalise hashtag data
 # Setup Seurat object
 pbmcP020P010.hashtag <- CreateSeuratObject(counts = pbmcP020P010.umis)
 # Normalize RNA data with log normalization
@@ -2298,9 +2207,8 @@ pbmcP020P010.hashtag <- NormalizeData(pbmcP020P010.hashtag)
 pbmcP020P010.hashtag <- FindVariableFeatures(pbmcP020P010.hashtag, selection.method = "vst", nfeatures = 2000)
 ```
 
-#### Normalize HTO and Adding HTO data as an independent assay 
-
 ```{r error=TRUE}
+# Normalize HTO and Adding HTO data as an independent assay
 # Add HTO data as a new assay independent from RNA
 pbmcP020P010.hashtag[["HTO"]] <- CreateAssayObject(counts = short_htosP020P010)
 short_adtP020P010 <- pbmcP020P010.htos[1:27,]
@@ -2308,13 +2216,10 @@ rownames(short_adtP020P010)
 pbmcP020P010.hashtag[["ADT"]] <- CreateAssayObject(counts = short_adtP020P010)
 # Normalize HTO data, here we use centered log-ratio (CLR) transformation
 pbmcP020P010.hashtag <- NormalizeData(pbmcP020P010.hashtag, assay = "HTO", normalization.method = "CLR")
-#No addition of ADT
-#pbmc.hashtag <- NormalizeData(pbmc.hashtag, assay = "ADT", normalization.method = "CLR")
 ```
 
-#### Demultiplex cells based on HTO enrichment
-
 ```{r}
+# Demultiplex cells based on HTO enrichment
 pbmcP020P010.hashtag <- HTODemux(pbmcP020P010.hashtag, assay = "HTO", positive.quantile = 0.7, kfunc = "kmeans")
 #### Visualize demultiplexing results
 # Global classification results
@@ -2342,14 +2247,13 @@ DefaultAssay(pbmcP020P010.hashtag) <- "HTO"
 pbmcP020P010.singlet <- subset(pbmcP020P010.hashtag, subset = P010 > 0.5 & P020 < 4)
 Idents(pbmcP020P010.singlet) <- "hash.ID"
 FeatureScatter(pbmcP020P010.singlet, feature1 = "P020", feature2 = "P010")
-```
+
 # Create the initial scatter plot
 plotP010 <- FeatureScatter(pbmcP020P010.hashtag, feature1 = "P020", feature2 = "P010")
-
 # Zoom in on the plot using coord_cartesian
 library(ggplot2)
 plotP010 + coord_cartesian(xlim = c(0, 1), ylim = c(0, 4))
-
+```
 ```{r}
 DefaultAssay(pbmcP020P010.hashtag) <- "HTO"
 pbmc.singlet_P010 <- subset(pbmcP020P010.hashtag, subset = P010 > 0.5 & P020 < 0.45)
@@ -2358,13 +2262,13 @@ Idents(pbmc.singlet_P010) <- "hash.ID"
 plotsP010<- FeatureScatter(pbmc.singlet_P010, feature1 = "P020", feature2 = "P010")
 patchwork::wrap_plots(plotsP010) * xlim(c(0, 4)) + ylim(c(0, 4))
 DefaultAssay(pbmc.singlet_P010) <- "RNA"
-```
+
 # Create the initial scatter plot
 plotP020 <- FeatureScatter(pbmcP020P010.hashtag, feature1 = "P020", feature2 = "P010")
-
 # Zoom in on the plot using coord_cartesian
 library(ggplot2)
 plotP020 + coord_cartesian(xlim = c(0, 4), ylim = c(0, 0.5))
+```
 ```{r}
 DefaultAssay(pbmcP020P010.hashtag) <- "HTO"
 pbmc.singlet_P020 <- subset(pbmcP020P010.hashtag, subset = P010 < 0.40 & P020 > 0.5)
@@ -2382,7 +2286,7 @@ table(pbmc.singlet_P010$HTO_classification.global)
 ```
 
 
-
+#Sample P020
 ```{r}
 pbmc.singlet_P020[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_P020, pattern = "^MT-")
 VlnPlot(pbmc.singlet_P020, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
@@ -2415,7 +2319,7 @@ View(pbmc.singlet_P020@meta.data)
 saveRDS(pbmc.singlet_P020, "P020P010/pbmc.singlet_P020.rds")
 ```
 
-######PatientP010###################
+#Sample P010
 
 ```{r}
 #QC and filtering
@@ -2450,9 +2354,8 @@ View(pbmc.singlet_P010@meta.data)
 saveRDS(pbmc.singlet_P010, "P020P010/pbmc.singlet_P010.rds")
 ```
 
-```{r}
 #P021P028
-
+```{r}
 # Load in the UMI matrix
 pbmcP021P028.umis <- P021P028$`Gene Expression`
   
@@ -2481,7 +2384,7 @@ rownames(short_htosP021P028)
 ```
 
 ```{r}
-#### Setup Seurat object and and normalise hashtag data
+# Setup Seurat object and and normalise hashtag data
 # Setup Seurat object
 pbmcP021P028.hashtag <- CreateSeuratObject(counts = pbmcP021P028.umis)
 # Normalize RNA data with log normalization
@@ -2490,9 +2393,8 @@ pbmcP021P028.hashtag <- NormalizeData(pbmcP021P028.hashtag)
 pbmcP021P028.hashtag <- FindVariableFeatures(pbmcP021P028.hashtag, selection.method = "vst", nfeatures = 2000)
 ```
 
-#### Normalize HTO and Adding HTO data as an independent assay 
-
 ```{r error=TRUE}
+# Normalize HTO and Adding HTO data as an independent assay 
 # Add HTO data as a new assay independent from RNA
 pbmcP021P028.hashtag[["HTO"]] <- CreateAssayObject(counts = short_htosP021P028)
 short_adtP021P028 <- pbmcP021P028.htos[1:27,]
@@ -2500,21 +2402,18 @@ rownames(short_adtP021P028)
 pbmcP021P028.hashtag[["ADT"]] <- CreateAssayObject(counts = short_adtP021P028)
 # Normalize HTO data, here we use centered log-ratio (CLR) transformation
 pbmcP021P028.hashtag <- NormalizeData(pbmcP021P028.hashtag, assay = "HTO", normalization.method = "CLR")
-#No addition of ADT
-#pbmc.hashtag <- NormalizeData(pbmc.hashtag, assay = "ADT", normalization.method = "CLR")
 ```
 
-#### Demultiplex cells based on HTO enrichment
-
 ```{r}
+# Demultiplex cells based on HTO enrichment
 pbmcP021P028.hashtag <- HTODemux(pbmcP021P028.hashtag, assay = "HTO", positive.quantile = 0.7, kfunc = "kmeans")
-#### Visualize demultiplexing results
+# Visualize demultiplexing results
 # Global classification results
 table(pbmcP021P028.hashtag$HTO_classification.global)
 ```
 
 ```{r error=TRUE}
-#### Visualize enrichment for selected HTOs with ridge plots
+# Visualize enrichment for selected HTOs with ridge plots
 # Group cells based on the max HTO signal
 Idents(pbmcP021P028.hashtag) <- "HTO_maxID"
 RidgePlot(pbmcP021P028.hashtag, assay = "HTO", features = rownames(pbmcP021P028.hashtag[["HTO"]])[1:2], ncol = 2)
@@ -2525,8 +2424,6 @@ RidgePlot(pbmcP021P028.hashtag, assay = "HTO", features = rownames(pbmcP021P028.
 
 Idents(pbmcP021P028.hashtag) <- "hash.ID"
 FeatureScatter(pbmcP021P028.hashtag, feature1 = "P021", feature2 = "P028")
-
-
 ```
 
 ```{r}
@@ -2534,13 +2431,13 @@ DefaultAssay(pbmcP021P028.hashtag) <- "HTO"
 pbmcP021P028.singlet <- subset(pbmcP021P028.hashtag, subset = P028 > 0.5 & P021 < 4)
 Idents(pbmcP021P028.singlet) <- "hash.ID"
 FeatureScatter(pbmcP021P028.singlet, feature1 = "P021", feature2 = "P028")
-```
+
 # Create the initial scatter plot
 plotP028 <- FeatureScatter(pbmcP021P028.hashtag, feature1 = "P021", feature2 = "P028")
-
 # Zoom in on the plot using coord_cartesian
 library(ggplot2)
 plotP028 + coord_cartesian(xlim = c(0, 1), ylim = c(0, 4))
+```
 
 ```{r}
 DefaultAssay(pbmcP021P028.hashtag) <- "HTO"
@@ -2550,13 +2447,15 @@ Idents(pbmc.singlet_P028) <- "hash.ID"
 plotsP028<- FeatureScatter(pbmc.singlet_P028, feature1 = "P021", feature2 = "P028")
 patchwork::wrap_plots(plotsP028) * xlim(c(0, 4)) + ylim(c(0, 4))
 DefaultAssay(pbmc.singlet_P028) <- "RNA"
-```
+
 # Create the initial scatter plot
 plotP021 <- FeatureScatter(pbmcP021P028.hashtag, feature1 = "P021", feature2 = "P028")
 
 # Zoom in on the plot using coord_cartesian
 library(ggplot2)
 plotP021 + coord_cartesian(xlim = c(0, 4), ylim = c(0, 0.5))
+```
+
 ```{r}
 DefaultAssay(pbmcP021P028.hashtag) <- "HTO"
 pbmc.singlet_P021 <- subset(pbmcP021P028.hashtag, subset = P028 < 0.40 & P021 > 0.5)
@@ -2573,8 +2472,7 @@ table(pbmc.singlet_P021$HTO_classification.global)
 table(pbmc.singlet_P028$HTO_classification.global)
 ```
 
-
-
+#Sample P021
 ```{r}
 pbmc.singlet_P021[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_P021, pattern = "^MT-")
 VlnPlot(pbmc.singlet_P021, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
@@ -2607,8 +2505,7 @@ View(pbmc.singlet_P021@meta.data)
 saveRDS(pbmc.singlet_P021, "P021P028/pbmc.singlet_P021.rds")
 ```
 
-######PatientP028###################
-
+#Sample P028
 ```{r}
 #QC and filtering
 pbmc.singlet_P028[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_P028, pattern = "^MT-")
@@ -2642,9 +2539,8 @@ View(pbmc.singlet_P028@meta.data)
 saveRDS(pbmc.singlet_P028, "P021P028/pbmc.singlet_P028.rds")
 ```
 
-```{r}
 #P024H059
-
+```{r}
 # Load in the UMI matrix
 pbmcP024H059.umis <- P024H059$`Gene Expression`
   
@@ -2682,9 +2578,8 @@ pbmcP024H059.hashtag <- NormalizeData(pbmcP024H059.hashtag)
 pbmcP024H059.hashtag <- FindVariableFeatures(pbmcP024H059.hashtag, selection.method = "vst", nfeatures = 2000)
 ```
 
-#### Normalize HTO and Adding HTO data as an independent assay 
-
 ```{r error=TRUE}
+# Normalize HTO and Adding HTO data as an independent assay 
 # Add HTO data as a new assay independent from RNA
 pbmcP024H059.hashtag[["HTO"]] <- CreateAssayObject(counts = short_htosP024H059)
 short_adtP024H059 <- pbmcP024H059.htos[1:27,]
@@ -2692,21 +2587,18 @@ rownames(short_adtP024H059)
 pbmcP024H059.hashtag[["ADT"]] <- CreateAssayObject(counts = short_adtP024H059)
 # Normalize HTO data, here we use centered log-ratio (CLR) transformation
 pbmcP024H059.hashtag <- NormalizeData(pbmcP024H059.hashtag, assay = "HTO", normalization.method = "CLR")
-#No addition of ADT
-#pbmc.hashtag <- NormalizeData(pbmc.hashtag, assay = "ADT", normalization.method = "CLR")
 ```
 
-#### Demultiplex cells based on HTO enrichment
-
 ```{r}
+# Demultiplex cells based on HTO enrichment
 pbmcP024H059.hashtag <- HTODemux(pbmcP024H059.hashtag, assay = "HTO", positive.quantile = 0.7, kfunc = "kmeans")
-#### Visualize demultiplexing results
+# Visualize demultiplexing results
 # Global classification results
 table(pbmcP024H059.hashtag$HTO_classification.global)
 ```
 
 ```{r error=TRUE}
-#### Visualize enrichment for selected HTOs with ridge plots
+# Visualize enrichment for selected HTOs with ridge plots
 # Group cells based on the max HTO signal
 Idents(pbmcP024H059.hashtag) <- "HTO_maxID"
 RidgePlot(pbmcP024H059.hashtag, assay = "HTO", features = rownames(pbmcP024H059.hashtag[["HTO"]])[1:2], ncol = 2)
@@ -2714,11 +2606,8 @@ RidgePlot(pbmcP024H059.hashtag, assay = "HTO", features = rownames(pbmcP024H059.
 ```
 
 ```{r error=TRUE}
-
 Idents(pbmcP024H059.hashtag) <- "hash.ID"
 FeatureScatter(pbmcP024H059.hashtag, feature1 = "P024", feature2 = "H059")
-
-
 ```
 
 ```{r}
@@ -2726,13 +2615,14 @@ DefaultAssay(pbmcP024H059.hashtag) <- "HTO"
 pbmcP024H059.singlet <- subset(pbmcP024H059.hashtag, subset = H059 > 0.7 & P024 < 4)
 Idents(pbmcP024H059.singlet) <- "hash.ID"
 FeatureScatter(pbmcP024H059.singlet, feature1 = "P024", feature2 = "H059")
-```
+
 # Create the initial scatter plot
 plotH059 <- FeatureScatter(pbmcP024H059.hashtag, feature1 = "P024", feature2 = "H059")
 
 # Zoom in on the plot using coord_cartesian
 library(ggplot2)
 plotH059 + coord_cartesian(xlim = c(0, 1), ylim = c(0, 1))
+```
 
 ```{r}
 DefaultAssay(pbmcP024H059.hashtag) <- "HTO"
@@ -2742,13 +2632,15 @@ Idents(pbmc.singlet_H059) <- "hash.ID"
 plotsH059<- FeatureScatter(pbmc.singlet_H059, feature1 = "P024", feature2 = "H059")
 patchwork::wrap_plots(plotsH059) * xlim(c(0, 4)) + ylim(c(0, 4))
 DefaultAssay(pbmc.singlet_H059) <- "RNA"
-```
+
 # Create the initial scatter plot
 plotP024 <- FeatureScatter(pbmcP024H059.hashtag, feature1 = "P024", feature2 = "H059")
 
 # Zoom in on the plot using coord_cartesian
 library(ggplot2)
 plotP024 + coord_cartesian(xlim = c(0, 4), ylim = c(0, 0.7))
+```
+
 ```{r}
 DefaultAssay(pbmcP024H059.hashtag) <- "HTO"
 pbmc.singlet_P024 <- subset(pbmcP024H059.hashtag, subset = H059 < 0.6 & P024 > 0.6)
@@ -2765,8 +2657,7 @@ table(pbmc.singlet_P024$HTO_classification.global)
 table(pbmc.singlet_H059$HTO_classification.global)
 ```
 
-
-
+#Sample P024
 ```{r}
 pbmc.singlet_P024[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_P024, pattern = "^MT-")
 VlnPlot(pbmc.singlet_P024, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
@@ -2799,8 +2690,7 @@ View(pbmc.singlet_P024@meta.data)
 saveRDS(pbmc.singlet_P024, "P024H059/pbmc.singlet_P024.rds")
 ```
 
-######PatientH059###################
-
+#Sample H059
 ```{r}
 #QC and filtering
 pbmc.singlet_H059[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_H059, pattern = "^MT-")
@@ -2833,10 +2723,9 @@ pbmc.singlet_H059 <- subset(pbmc.singlet_H059, idents = "singlet")
 View(pbmc.singlet_H059@meta.data)
 saveRDS(pbmc.singlet_H059, "P024H059/pbmc.singlet_H059.rds")
 ```
-
-```{r}
 #P025P037
 
+```{r}
 # Load in the UMI matrix
 pbmcP025P037.umis <- P025P037$`Gene Expression`
   
@@ -2874,9 +2763,9 @@ pbmcP025P037.hashtag <- NormalizeData(pbmcP025P037.hashtag)
 pbmcP025P037.hashtag <- FindVariableFeatures(pbmcP025P037.hashtag, selection.method = "vst", nfeatures = 2000)
 ```
 
-#### Normalize HTO and Adding HTO data as an independent assay 
 
 ```{r error=TRUE}
+# Normalize HTO and Adding HTO data as an independent assay 
 # Add HTO data as a new assay independent from RNA
 pbmcP025P037.hashtag[["HTO"]] <- CreateAssayObject(counts = short_htosP025P037)
 short_adtP025P037 <- pbmcP025P037.htos[1:27,]
@@ -2884,13 +2773,11 @@ rownames(short_adtP025P037)
 pbmcP025P037.hashtag[["ADT"]] <- CreateAssayObject(counts = short_adtP025P037)
 # Normalize HTO data, here we use centered log-ratio (CLR) transformation
 pbmcP025P037.hashtag <- NormalizeData(pbmcP025P037.hashtag, assay = "HTO", normalization.method = "CLR")
-#No addition of ADT
-#pbmc.hashtag <- NormalizeData(pbmc.hashtag, assay = "ADT", normalization.method = "CLR")
 ```
 
-#### Demultiplex cells based on HTO enrichment
 
 ```{r}
+# Demultiplex cells based on HTO enrichment
 pbmcP025P037.hashtag <- HTODemux(pbmcP025P037.hashtag, assay = "HTO", positive.quantile = 0.7, kfunc = "kmeans")
 #### Visualize demultiplexing results
 # Global classification results
@@ -2918,13 +2805,13 @@ DefaultAssay(pbmcP025P037.hashtag) <- "HTO"
 pbmcP025P037.singlet <- subset(pbmcP025P037.hashtag, subset = P037 > 0.5 & P025 < 4)
 Idents(pbmcP025P037.singlet) <- "hash.ID"
 FeatureScatter(pbmcP025P037.singlet, feature1 = "P025", feature2 = "P037")
-```
+
 # Create the initial scatter plot
 plotP037 <- FeatureScatter(pbmcP025P037.hashtag, feature1 = "P025", feature2 = "P037")
-
 # Zoom in on the plot using coord_cartesian
 library(ggplot2)
 plotP037 + coord_cartesian(xlim = c(0, 1), ylim = c(0, 4))
+```
 
 ```{r}
 DefaultAssay(pbmcP025P037.hashtag) <- "HTO"
@@ -2934,13 +2821,14 @@ Idents(pbmc.singlet_P037) <- "hash.ID"
 plotsP037<- FeatureScatter(pbmc.singlet_P037, feature1 = "P025", feature2 = "P037")
 patchwork::wrap_plots(plotsP037) * xlim(c(0, 4)) + ylim(c(0, 4))
 DefaultAssay(pbmc.singlet_P037) <- "RNA"
-```
+
 # Create the initial scatter plot
 plotP025 <- FeatureScatter(pbmcP025P037.hashtag, feature1 = "P025", feature2 = "P037")
-
 # Zoom in on the plot using coord_cartesian
 library(ggplot2)
 plotP025 + coord_cartesian(xlim = c(0, 4), ylim = c(0, 1))
+```
+
 ```{r}
 DefaultAssay(pbmcP025P037.hashtag) <- "HTO"
 pbmc.singlet_P025 <- subset(pbmcP025P037.hashtag, subset = P037 < 0.25 & P025 > 0.5)
@@ -2958,7 +2846,7 @@ table(pbmc.singlet_P037$HTO_classification.global)
 ```
 
 
-
+#Sample P025
 ```{r}
 pbmc.singlet_P025[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_P025, pattern = "^MT-")
 VlnPlot(pbmc.singlet_P025, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
@@ -2991,7 +2879,7 @@ View(pbmc.singlet_P025@meta.data)
 saveRDS(pbmc.singlet_P025, "P025P037/pbmc.singlet_P025.rds")
 ```
 
-######PatientP037###################
+#Sample P037
 
 ```{r}
 #QC and filtering
@@ -3025,10 +2913,8 @@ pbmc.singlet_P037 <- subset(pbmc.singlet_P037, idents = "singlet")
 View(pbmc.singlet_P037@meta.data)
 saveRDS(pbmc.singlet_P037, "P025P037/pbmc.singlet_P037.rds")
 ```
-
-```{r}
 #P029P006
-
+```{r}
 # Load in the UMI matrix
 pbmcP029P006.umis <- P029P006$`Gene Expression`
   
@@ -3066,9 +2952,9 @@ pbmcP029P006.hashtag <- NormalizeData(pbmcP029P006.hashtag)
 pbmcP029P006.hashtag <- FindVariableFeatures(pbmcP029P006.hashtag, selection.method = "vst", nfeatures = 2000)
 ```
 
-#### Normalize HTO and Adding HTO data as an independent assay 
 
 ```{r error=TRUE}
+# Normalize HTO and Adding HTO data as an independent assay 
 # Add HTO data as a new assay independent from RNA
 pbmcP029P006.hashtag[["HTO"]] <- CreateAssayObject(counts = short_htosP029P006)
 short_adtP029P006 <- pbmcP029P006.htos[1:27,]
@@ -3076,13 +2962,10 @@ rownames(short_adtP029P006)
 pbmcP029P006.hashtag[["ADT"]] <- CreateAssayObject(counts = short_adtP029P006)
 # Normalize HTO data, here we use centered log-ratio (CLR) transformation
 pbmcP029P006.hashtag <- NormalizeData(pbmcP029P006.hashtag, assay = "HTO", normalization.method = "CLR")
-#No addition of ADT
-#pbmc.hashtag <- NormalizeData(pbmc.hashtag, assay = "ADT", normalization.method = "CLR")
 ```
 
-#### Demultiplex cells based on HTO enrichment
-
 ```{r}
+#### Demultiplex cells based on HTO enrichment
 pbmcP029P006.hashtag <- HTODemux(pbmcP029P006.hashtag, assay = "HTO", positive.quantile = 0.7, kfunc = "kmeans")
 #### Visualize demultiplexing results
 # Global classification results
@@ -3094,15 +2977,11 @@ table(pbmcP029P006.hashtag$HTO_classification.global)
 # Group cells based on the max HTO signal
 Idents(pbmcP029P006.hashtag) <- "HTO_maxID"
 RidgePlot(pbmcP029P006.hashtag, assay = "HTO", features = rownames(pbmcP029P006.hashtag[["HTO"]])[1:2], ncol = 2)
-
 ```
 
 ```{r error=TRUE}
-
 Idents(pbmcP029P006.hashtag) <- "hash.ID"
 FeatureScatter(pbmcP029P006.hashtag, feature1 = "P029", feature2 = "P006")
-
-
 ```
 
 ```{r}
@@ -3110,13 +2989,13 @@ DefaultAssay(pbmcP029P006.hashtag) <- "HTO"
 pbmcP029P006.singlet <- subset(pbmcP029P006.hashtag, subset = P006 > 0.5 & P029 < 4)
 Idents(pbmcP029P006.singlet) <- "hash.ID"
 FeatureScatter(pbmcP029P006.singlet, feature1 = "P029", feature2 = "P006")
-```
+
 # Create the initial scatter plot
 plotP006 <- FeatureScatter(pbmcP029P006.hashtag, feature1 = "P029", feature2 = "P006")
-
 # Zoom in on the plot using coord_cartesian
 library(ggplot2)
 plotP006 + coord_cartesian(xlim = c(0, 1), ylim = c(0, 4))
+```
 
 ```{r}
 DefaultAssay(pbmcP029P006.hashtag) <- "HTO"
@@ -3126,13 +3005,13 @@ Idents(pbmc.singlet_P006) <- "hash.ID"
 plotsP006<- FeatureScatter(pbmc.singlet_P006, feature1 = "P029", feature2 = "P006")
 patchwork::wrap_plots(plotsP006) * xlim(c(0, 4)) + ylim(c(0, 4))
 DefaultAssay(pbmc.singlet_P006) <- "RNA"
-```
+
 # Create the initial scatter plot
 plotP029 <- FeatureScatter(pbmcP029P006.hashtag, feature1 = "P029", feature2 = "P006")
-
 # Zoom in on the plot using coord_cartesian
 library(ggplot2)
 plotP029 + coord_cartesian(xlim = c(0, 4), ylim = c(0, 1))
+```
 ```{r}
 DefaultAssay(pbmcP029P006.hashtag) <- "HTO"
 pbmc.singlet_P029 <- subset(pbmcP029P006.hashtag, subset = P006 < 0.4 & P029 > 0.5)
@@ -3149,8 +3028,7 @@ table(pbmc.singlet_P029$HTO_classification.global)
 table(pbmc.singlet_P006$HTO_classification.global)
 ```
 
-
-
+#Sample P029
 ```{r}
 pbmc.singlet_P029[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_P029, pattern = "^MT-")
 VlnPlot(pbmc.singlet_P029, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
@@ -3183,7 +3061,7 @@ View(pbmc.singlet_P029@meta.data)
 saveRDS(pbmc.singlet_P029, "P029P006/pbmc.singlet_P029.rds")
 ```
 
-######PatientP006###################
+#Sample P006
 
 ```{r}
 #QC and filtering
@@ -3217,10 +3095,9 @@ pbmc.singlet_P006 <- subset(pbmc.singlet_P006, idents = "singlet")
 View(pbmc.singlet_P006@meta.data)
 saveRDS(pbmc.singlet_P006, "P029P006/pbmc.singlet_P006.rds")
 ```
-
-```{r}
 #P032P035
 
+```{r}
 # Load in the UMI matrix
 pbmcP032P035.umis <- P032P035$`Gene Expression`
   
@@ -3258,9 +3135,8 @@ pbmcP032P035.hashtag <- NormalizeData(pbmcP032P035.hashtag)
 pbmcP032P035.hashtag <- FindVariableFeatures(pbmcP032P035.hashtag, selection.method = "vst", nfeatures = 2000)
 ```
 
-#### Normalize HTO and Adding HTO data as an independent assay 
-
 ```{r error=TRUE}
+# Normalize HTO and Adding HTO data as an independent assay 
 # Add HTO data as a new assay independent from RNA
 pbmcP032P035.hashtag[["HTO"]] <- CreateAssayObject(counts = short_htosP032P035)
 short_adtP032P035 <- pbmcP032P035.htos[1:27,]
@@ -3268,15 +3144,13 @@ rownames(short_adtP032P035)
 pbmcP032P035.hashtag[["ADT"]] <- CreateAssayObject(counts = short_adtP032P035)
 # Normalize HTO data, here we use centered log-ratio (CLR) transformation
 pbmcP032P035.hashtag <- NormalizeData(pbmcP032P035.hashtag, assay = "HTO", normalization.method = "CLR")
-#No addition of ADT
-#pbmc.hashtag <- NormalizeData(pbmc.hashtag, assay = "ADT", normalization.method = "CLR")
 ```
 
-#### Demultiplex cells based on HTO enrichment
 
 ```{r}
+# Demultiplex cells based on HTO enrichment
 pbmcP032P035.hashtag <- HTODemux(pbmcP032P035.hashtag, assay = "HTO", positive.quantile = 0.7, kfunc = "kmeans")
-#### Visualize demultiplexing results
+# Visualize demultiplexing results
 # Global classification results
 table(pbmcP032P035.hashtag$HTO_classification.global)
 ```
@@ -3290,11 +3164,8 @@ RidgePlot(pbmcP032P035.hashtag, assay = "HTO", features = rownames(pbmcP032P035.
 ```
 
 ```{r error=TRUE}
-
 Idents(pbmcP032P035.hashtag) <- "hash.ID"
 FeatureScatter(pbmcP032P035.hashtag, feature1 = "P032", feature2 = "P035")
-
-
 ```
 
 ```{r}
@@ -3302,14 +3173,13 @@ DefaultAssay(pbmcP032P035.hashtag) <- "HTO"
 pbmcP032P035.singlet <- subset(pbmcP032P035.hashtag, subset = P035 > 0.5 & P032 < 4)
 Idents(pbmcP032P035.singlet) <- "hash.ID"
 FeatureScatter(pbmcP032P035.singlet, feature1 = "P032", feature2 = "P035")
-```
+
 # Create the initial scatter plot
 plotP035 <- FeatureScatter(pbmcP032P035.hashtag, feature1 = "P032", feature2 = "P035")
-
 # Zoom in on the plot using coord_cartesian
 library(ggplot2)
 plotP035 + coord_cartesian(xlim = c(0, 1), ylim = c(0, 4))
-
+```
 ```{r}
 DefaultAssay(pbmcP032P035.hashtag) <- "HTO"
 pbmc.singlet_P035 <- subset(pbmcP032P035.hashtag, subset = P035 > 0.9 & P032 < 0.85)
@@ -3318,13 +3188,14 @@ Idents(pbmc.singlet_P035) <- "hash.ID"
 plotsP035<- FeatureScatter(pbmc.singlet_P035, feature1 = "P032", feature2 = "P035")
 patchwork::wrap_plots(plotsP035) * xlim(c(0, 4)) + ylim(c(0, 4))
 DefaultAssay(pbmc.singlet_P035) <- "RNA"
-```
+
 # Create the initial scatter plot
 plotP032 <- FeatureScatter(pbmcP032P035.hashtag, feature1 = "P032", feature2 = "P035")
-
 # Zoom in on the plot using coord_cartesian
 library(ggplot2)
 plotP032 + coord_cartesian(xlim = c(0, 4), ylim = c(0, 1))
+```
+
 ```{r}
 DefaultAssay(pbmcP032P035.hashtag) <- "HTO"
 pbmc.singlet_P032 <- subset(pbmcP032P035.hashtag, subset = P035 < 0.25 & P032 > 0.5)
@@ -3341,8 +3212,7 @@ table(pbmc.singlet_P032$HTO_classification.global)
 table(pbmc.singlet_P035$HTO_classification.global)
 ```
 
-
-
+#Sample P032
 ```{r}
 pbmc.singlet_P032[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_P032, pattern = "^MT-")
 VlnPlot(pbmc.singlet_P032, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
@@ -3373,10 +3243,10 @@ VlnPlot(pbmc.singlet_P032, features= c("nFeature_RNA", "nCount_RNA"), ncol=2)
 pbmc.singlet_P032 <- subset(pbmc.singlet_P032, idents = "singlet")
 View(pbmc.singlet_P032@meta.data)
 saveRDS(pbmc.singlet_P032, "P032P035/pbmc.singlet_P032.rds")
+#######Excluded because of poor hashtagging
 ```
 
-######PatientP035###################
-
+#Sample P035
 ```{r}
 #QC and filtering
 pbmc.singlet_P035[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_P035, pattern = "^MT-")
@@ -3408,11 +3278,12 @@ VlnPlot(pbmc.singlet_P035, features= c("nFeature_RNA", "nCount_RNA"), ncol=2)
 pbmc.singlet_P035 <- subset(pbmc.singlet_P035, idents = "singlet")
 View(pbmc.singlet_P035@meta.data)
 saveRDS(pbmc.singlet_P035, "P032P035/pbmc.singlet_P035.rds")
+#######Excluded because of poor hashtagging
+
 ```
 
-```{r}
 #P040P041
-
+```{r}
 # Load in the UMI matrix
 pbmcP040P041.umis <- P040P041$`Gene Expression`
   
@@ -3450,9 +3321,8 @@ pbmcP040P041.hashtag <- NormalizeData(pbmcP040P041.hashtag)
 pbmcP040P041.hashtag <- FindVariableFeatures(pbmcP040P041.hashtag, selection.method = "vst", nfeatures = 2000)
 ```
 
-#### Normalize HTO and Adding HTO data as an independent assay 
-
 ```{r error=TRUE}
+# Normalize HTO and Adding HTO data as an independent assay 
 # Add HTO data as a new assay independent from RNA
 pbmcP040P041.hashtag[["HTO"]] <- CreateAssayObject(counts = short_htosP040P041)
 short_adtP040P041 <- pbmcP040P041.htos[1:27,]
@@ -3460,13 +3330,10 @@ rownames(short_adtP040P041)
 pbmcP040P041.hashtag[["ADT"]] <- CreateAssayObject(counts = short_adtP040P041)
 # Normalize HTO data, here we use centered log-ratio (CLR) transformation
 pbmcP040P041.hashtag <- NormalizeData(pbmcP040P041.hashtag, assay = "HTO", normalization.method = "CLR")
-#No addition of ADT
-#pbmc.hashtag <- NormalizeData(pbmc.hashtag, assay = "ADT", normalization.method = "CLR")
 ```
 
-#### Demultiplex cells based on HTO enrichment
-
 ```{r}
+# Demultiplex cells based on HTO enrichment
 pbmcP040P041.hashtag <- HTODemux(pbmcP040P041.hashtag, assay = "HTO", positive.quantile = 0.7, kfunc = "kmeans")
 #### Visualize demultiplexing results
 # Global classification results
@@ -3474,7 +3341,7 @@ table(pbmcP040P041.hashtag$HTO_classification.global)
 ```
 
 ```{r error=TRUE}
-#### Visualize enrichment for selected HTOs with ridge plots
+# Visualize enrichment for selected HTOs with ridge plots
 # Group cells based on the max HTO signal
 Idents(pbmcP040P041.hashtag) <- "HTO_maxID"
 RidgePlot(pbmcP040P041.hashtag, assay = "HTO", features = rownames(pbmcP040P041.hashtag[["HTO"]])[1:2], ncol = 2)
@@ -3482,11 +3349,8 @@ RidgePlot(pbmcP040P041.hashtag, assay = "HTO", features = rownames(pbmcP040P041.
 ```
 
 ```{r error=TRUE}
-
 Idents(pbmcP040P041.hashtag) <- "hash.ID"
 FeatureScatter(pbmcP040P041.hashtag, feature1 = "P040", feature2 = "P041")
-
-
 ```
 
 ```{r}
@@ -3494,13 +3358,13 @@ DefaultAssay(pbmcP040P041.hashtag) <- "HTO"
 pbmcP040P041.singlet <- subset(pbmcP040P041.hashtag, subset = P041 > 0.5 & P040 < 4)
 Idents(pbmcP040P041.singlet) <- "hash.ID"
 FeatureScatter(pbmcP040P041.singlet, feature1 = "P040", feature2 = "P041")
-```
+
 # Create the initial scatter plot
 plotP041 <- FeatureScatter(pbmcP040P041.hashtag, feature1 = "P040", feature2 = "P041")
-
 # Zoom in on the plot using coord_cartesian
 library(ggplot2)
 plotP041 + coord_cartesian(xlim = c(0, 1), ylim = c(0, 4))
+```
 
 ```{r}
 DefaultAssay(pbmcP040P041.hashtag) <- "HTO"
@@ -3510,13 +3374,15 @@ Idents(pbmc.singlet_P041) <- "hash.ID"
 plotsP041<- FeatureScatter(pbmc.singlet_P041, feature1 = "P040", feature2 = "P041")
 patchwork::wrap_plots(plotsP041) * xlim(c(0, 4)) + ylim(c(0, 4))
 DefaultAssay(pbmc.singlet_P041) <- "RNA"
-```
+
 # Create the initial scatter plot
 plotP040 <- FeatureScatter(pbmcP040P041.hashtag, feature1 = "P040", feature2 = "P041")
 
 # Zoom in on the plot using coord_cartesian
 library(ggplot2)
 plotP040 + coord_cartesian(xlim = c(0, 4), ylim = c(0, 1))
+```
+
 ```{r}
 DefaultAssay(pbmcP040P041.hashtag) <- "HTO"
 pbmc.singlet_P040 <- subset(pbmcP040P041.hashtag, subset = P041 < 0.5 & P040 > 0.7)
@@ -3533,7 +3399,7 @@ table(pbmc.singlet_P040$HTO_classification.global)
 table(pbmc.singlet_P041$HTO_classification.global)
 ```
 
-
+#Sample P040
 ```{r}
 pbmc.singlet_P040[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_P040, pattern = "^MT-")
 VlnPlot(pbmc.singlet_P040, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
@@ -3566,8 +3432,7 @@ View(pbmc.singlet_P040@meta.data)
 saveRDS(pbmc.singlet_P040, "P040P041/pbmc.singlet_P040.rds")
 ```
 
-######PatientP041###################
-
+#Sample P041
 ```{r}
 #QC and filtering
 pbmc.singlet_P041[["percent.mt"]] <- PercentageFeatureSet(pbmc.singlet_P041, pattern = "^MT-")
